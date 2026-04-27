@@ -6,9 +6,12 @@ import {
   ELLIPSE_RX,
   ELLIPSE_RY,
   IntersectionGroup,
-  computeIntersections,
+  IntersectionRegion,
+  clearIntersectionCache,
+  computeIntersectionRegions,
   downloadIntersectionXlsx,
   extractValues,
+  materializeGroup,
   parseFile,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
