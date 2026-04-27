@@ -372,6 +372,11 @@ const Index = () => {
                   setSelected({ type: "group", id: g.id });
                   setTab("shared");
                 }}
+                onPointerEnter={() => {
+                  if (dragId) return;
+                  setSelected({ type: "group", id: g.id });
+                  setTab("shared");
+                }}
                 className="absolute -translate-x-1/2 -translate-y-1/2 px-3 py-1.5 rounded-full text-xs font-semibold border backdrop-blur-md transition-all hover:scale-105 whitespace-nowrap"
                 style={{
                   left: g.centerX,
@@ -383,7 +388,7 @@ const Index = () => {
                     ? `0 0 0 3px hsl(${g.hue} 90% 70% / 0.45), 0 6px 24px hsl(${g.hue} 80% 30% / 0.5)`
                     : `0 4px 18px hsl(${g.hue} 80% 20% / 0.5)`,
                 }}
-                title={`${g.label} — ${g.sharedCount} shared values`}
+                title={`${g.label} — ${g.sharedCount} shared values (hover to preview)`}
               >
                 {g.label} · ∩ {g.sharedCount}
               </button>
