@@ -119,7 +119,7 @@ export interface IntersectionRegion {
 const pairCache = new Map<string, string[]>();
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
-const sharedValuesFor = (datasets: Dataset[], ids: string[]): string[] => {
+export const sharedValuesFor = (datasets: Dataset[], ids: string[]): string[] => {
   if (ids.length < 2) return [];
   const sorted = ids.slice().sort();
   if (sorted.length === 2) {
