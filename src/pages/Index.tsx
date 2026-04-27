@@ -386,15 +386,32 @@ const GroupPanel = ({
       </div>
 
       {tab === "shared" ? (
-        <div className="space-y-1">
-          {group.sharedValues.slice(0, 500).map((v) => (
-            <div key={v} className="text-xs px-2 py-1 rounded bg-white/5 font-mono truncate">
-              {v}
-            </div>
-          ))}
-          {group.sharedValues.length > 500 && (
-            <p className="text-xs text-muted-foreground">+{group.sharedValues.length - 500} more…</p>
-          )}
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={sharedQuery}
+              onChange={(e) => setSharedQuery(e.target.value)}
+              placeholder="Search shared values…"
+              className="h-8 pl-7 text-xs bg-background/50"
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground px-0.5">
+            {filteredShared.length} of {group.sharedValues.length}
+          </p>
+          <div className="space-y-1 max-h-80 overflow-y-auto">
+            {filteredShared.slice(0, 500).map((v) => (
+              <div key={v} className="text-xs px-2 py-1 rounded bg-white/5 font-mono truncate">
+                {v}
+              </div>
+            ))}
+            {filteredShared.length > 500 && (
+              <p className="text-xs text-muted-foreground">+{filteredShared.length - 500} more…</p>
+            )}
+            {filteredShared.length === 0 && (
+              <p className="text-xs text-muted-foreground py-2 text-center">No matching values.</p>
+            )}
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
