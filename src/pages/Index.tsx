@@ -177,16 +177,13 @@ const Index = () => {
     selected?.type === "dataset" ? datasets.find((d) => d.id === selected.id) ?? null : null;
 
   // Highlight set for a dataset = union of shared values across its overlap regions.
-  // Memoized per-dataset so the row preview stays fast while dragging others.
+  // Uses cached sharedValuesFor — no row materialization needed for highlights.
   const sharedSetForDataset = useCallback(
     (id: string) => {
       const s = new Set<string>();
       for (const g of intersections) {
         if (!g.datasetIds.includes(id)) continue;
-        // sharedValuesFor is cached internally — cheap repeated calls.
-        const region = g;
-        const tmp = materializeGroup(datasets, region).sharedValues;
-        tmp.forEach((v) => s.add(v));
+        sharedValuesFor(datasets, g.datasetIds).forEach((v) => s.add(v));
       }
       return s;
     },
