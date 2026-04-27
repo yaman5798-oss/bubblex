@@ -423,44 +423,116 @@ const DatasetPanel = ({ dataset, sharedSet }: { dataset: Dataset; sharedSet: Set
 };
 
 const RowsPreview = ({ rows, highlight }: { rows: Record<string, unknown>[]; highlight?: Set<string> }) => {
+  const [query, setQuery] = useState("");
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
+
   if (rows.length === 0) return <p className="text-xs text-muted-foreground">No rows.</p>;
   const headers = Object.keys(rows[0]);
+
+  const q = query.trim().toLowerCase();
+  const activeColFilters = Object.entries(colFilters).filter(([, v]) => v.trim() !== "");
+
+  const filtered = rows.filter((r) => {
+    if (q) {
+      const hit = Object.values(r).some((v) => String(v ?? "").toLowerCase().includes(q));
+      if (!hit) return false;
+    }
+    for (const [col, val] of activeColFilters) {
+      const cv = String(r[col] ?? "").toLowerCase();
+      if (!cv.includes(val.trim().toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  const clearFilters = () => {
+    setQuery("");
+    setColFilters({});
+  };
+  const hasFilter = q !== "" || activeColFilters.length > 0;
+
   return (
-    <div className="border border-[hsl(var(--panel-border))] rounded overflow-auto max-h-80">
-      <table className="text-xs w-full">
-        <thead className="bg-white/5 sticky top-0">
-          <tr>
-            {headers.map((h) => (
-              <th key={h} className="text-left px-2 py-1 font-medium whitespace-nowrap">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.slice(0, 200).map((r, i) => (
-            <tr key={i} className="border-t border-[hsl(var(--panel-border))]">
-              {headers.map((h) => {
-                const v = r[h];
-                const norm = String(v ?? "").trim().toLowerCase();
-                const isHL = highlight?.has(norm) && norm !== "";
-                return (
-                  <td
-                    key={h}
-                    className="px-2 py-1 whitespace-nowrap"
-                    style={isHL ? { background: "hsl(var(--intersection) / 0.18)", color: "hsl(var(--intersection))" } : undefined}
-                  >
-                    {String(v ?? "")}
-                  </td>
-                );
-              })}
+    <div className="space-y-2">
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search all cells…"
+          className="h-8 pl-7 pr-7 text-xs bg-background/50"
+        />
+        {hasFilter && (
+          <button
+            onClick={clearFilters}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            title="Clear filters"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground px-0.5">
+        <span>
+          {filtered.length} of {rows.length} rows
+        </span>
+        {hasFilter && <span>filters active</span>}
+      </div>
+      <div className="border border-[hsl(var(--panel-border))] rounded overflow-auto max-h-80">
+        <table className="text-xs w-full">
+          <thead className="bg-white/5 sticky top-0 z-10">
+            <tr>
+              {headers.map((h) => (
+                <th key={h} className="text-left px-2 py-1 font-medium whitespace-nowrap">
+                  {h}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {rows.length > 200 && (
-        <p className="text-xs text-muted-foreground p-2">+{rows.length - 200} more rows…</p>
-      )}
+            <tr>
+              {headers.map((h) => (
+                <th key={h} className="px-1 py-1 bg-white/[0.02]">
+                  <input
+                    value={colFilters[h] ?? ""}
+                    onChange={(e) =>
+                      setColFilters((s) => ({ ...s, [h]: e.target.value }))
+                    }
+                    placeholder="filter…"
+                    className="w-full min-w-[80px] h-6 px-1.5 text-[10px] rounded bg-background/60 border border-[hsl(var(--panel-border))] focus:outline-none focus:border-foreground/40"
+                  />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.slice(0, 200).map((r, i) => (
+              <tr key={i} className="border-t border-[hsl(var(--panel-border))]">
+                {headers.map((h) => {
+                  const v = r[h];
+                  const norm = String(v ?? "").trim().toLowerCase();
+                  const isHL = highlight?.has(norm) && norm !== "";
+                  return (
+                    <td
+                      key={h}
+                      className="px-2 py-1 whitespace-nowrap"
+                      style={isHL ? { background: "hsl(var(--intersection) / 0.18)", color: "hsl(var(--intersection))" } : undefined}
+                    >
+                      {String(v ?? "")}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={headers.length} className="px-2 py-3 text-center text-muted-foreground">
+                  No matching rows.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {filtered.length > 200 && (
+          <p className="text-xs text-muted-foreground p-2">+{filtered.length - 200} more rows…</p>
+        )}
+      </div>
     </div>
   );
 };
