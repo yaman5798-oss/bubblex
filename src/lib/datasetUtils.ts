@@ -8,6 +8,8 @@ export interface Dataset {
   values: Set<string>; // normalized cell values for intersection
   x: number;
   y: number;
+  /** Size multiplier for the oval (1 = default). Adjust via mouse wheel. */
+  scale: number;
   colorVar: string; // e.g. "--dataset-1"
 }
 
