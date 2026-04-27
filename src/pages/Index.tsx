@@ -175,6 +175,37 @@ const Index = () => {
     setDragId(null);
   };
 
+  // Mouse-wheel resize: scroll over an oval to grow/shrink it.
+  // Attached natively so we can preventDefault (passive: false).
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const rect = el.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      // Find topmost oval under cursor (last in array = drawn on top).
+      let hit: string | null = null;
+      for (let i = datasets.length - 1; i >= 0; i--) {
+        const d = datasets[i];
+        if (pointInEllipse(px, py, d.x, d.y, d.scale ?? 1)) {
+          hit = d.id;
+          break;
+        }
+      }
+      if (!hit) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      setDatasets((arr) =>
+        arr.map((d) =>
+          d.id === hit ? { ...d, scale: Math.min(3, Math.max(0.3, d.scale * factor)) } : d
+        )
+      );
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [datasets]);
+
   const removeDataset = (id: string) => {
     clearIntersectionCache(id);
     setDatasets((d) => d.filter((x) => x.id !== id));
