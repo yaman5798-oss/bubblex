@@ -157,11 +157,13 @@ const Index = () => {
   const endDrag = () => setDragId(null);
 
   const removeDataset = (id: string) => {
+    clearIntersectionCache(id);
     setDatasets((d) => d.filter((x) => x.id !== id));
     if (selected?.id === id) setSelected(null);
   };
 
   const clearAll = () => {
+    clearIntersectionCache();
     setDatasets([]);
     setSelected(null);
   };
