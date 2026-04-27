@@ -124,6 +124,7 @@ const Index = () => {
           values: extractValues(rows),
           x: 200 + ((datasets.length + i) % 4) * 180,
           y: ch / 2 + (((datasets.length + i) % 2) - 0.5) * 120,
+          scale: 1,
           colorVar,
         });
       } catch (e) {
