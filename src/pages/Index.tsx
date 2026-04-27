@@ -170,8 +170,8 @@ const Index = () => {
             <defs>
               {datasets.map((d) => (
                 <radialGradient key={d.id} id={`grad-${d.id}`} cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor={`hsl(var(${d.colorVar}) / 0.55)`} />
-                  <stop offset="100%" stopColor={`hsl(var(${d.colorVar}) / 0.18)`} />
+                  <stop offset="0%" stopColor={`hsl(var(${d.colorVar}) / 0.45)`} />
+                  <stop offset="100%" stopColor={`hsl(var(${d.colorVar}) / 0.22)`} />
                 </radialGradient>
               ))}
             </defs>
