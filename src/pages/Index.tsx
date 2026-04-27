@@ -146,15 +146,32 @@ const Index = () => {
     (e.target as Element).setPointerCapture(e.pointerId);
   };
 
+  const rafRef = useRef<number | null>(null);
+  const pendingPos = useRef<{ x: number; y: number } | null>(null);
+
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragId || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - dragOffset.current.x;
-    const y = e.clientY - rect.top - dragOffset.current.y;
-    setDatasets((arr) => arr.map((d) => (d.id === dragId ? { ...d, x, y } : d)));
+    pendingPos.current = {
+      x: e.clientX - rect.left - dragOffset.current.x,
+      y: e.clientY - rect.top - dragOffset.current.y,
+    };
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const p = pendingPos.current;
+      if (!p || !dragId) return;
+      setDatasets((arr) => arr.map((d) => (d.id === dragId ? { ...d, x: p.x, y: p.y } : d)));
+    });
   };
 
-  const endDrag = () => setDragId(null);
+  const endDrag = () => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setDragId(null);
+  };
 
   const removeDataset = (id: string) => {
     clearIntersectionCache(id);
