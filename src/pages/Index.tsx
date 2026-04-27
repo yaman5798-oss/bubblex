@@ -331,9 +331,9 @@ const Index = () => {
                     ? `0 0 0 3px hsl(${g.hue} 90% 70% / 0.45), 0 6px 24px hsl(${g.hue} 80% 30% / 0.5)`
                     : `0 4px 18px hsl(${g.hue} 80% 20% / 0.5)`,
                 }}
-                title={`${g.label} — ${g.sharedValues.length} shared values`}
+                title={`${g.label} — ${g.sharedCount} shared values`}
               >
-                {g.label} · ∩ {g.sharedValues.length}
+                {g.label} · ∩ {g.sharedCount}
               </button>
             );
           })}
