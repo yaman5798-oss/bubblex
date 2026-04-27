@@ -320,9 +320,10 @@ const Index = () => {
             {datasets.map((d) => (
               <g
                 key={d.id}
-                transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG})`}
+                transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG}) scale(${d.scale})`}
                 style={{ pointerEvents: "auto", cursor: dragId === d.id ? "grabbing" : "grab" }}
                 onPointerDown={(e) => onPointerDown(e, d.id)}
+                onWheel={(e) => onWheelOval(e, d.id)}
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelected({ type: "dataset", id: d.id });
@@ -333,14 +334,14 @@ const Index = () => {
                   ry={ELLIPSE_RY}
                   fill={`url(#grad-${d.id})`}
                   stroke={`hsl(var(${d.colorVar}))`}
-                  strokeWidth={selectedDataset?.id === d.id ? 3 : 2}
+                  strokeWidth={(selectedDataset?.id === d.id ? 3 : 2) / d.scale}
                 />
                 <text
                   x={0}
                   y={-ELLIPSE_RY + 24}
                   textAnchor="middle"
                   fill={`hsl(var(${d.colorVar}))`}
-                  fontSize={14}
+                  fontSize={14 / d.scale}
                   fontWeight={600}
                   transform={`rotate(${-ELLIPSE_ROT_DEG})`}
                 >
@@ -351,7 +352,7 @@ const Index = () => {
                   y={-ELLIPSE_RY + 42}
                   textAnchor="middle"
                   fill="hsl(var(--muted-foreground))"
-                  fontSize={11}
+                  fontSize={11 / d.scale}
                   transform={`rotate(${-ELLIPSE_ROT_DEG})`}
                 >
                   {d.rows.length} rows · {d.values.size} unique values
