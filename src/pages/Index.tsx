@@ -219,33 +219,33 @@ const Index = () => {
             ))}
           </svg>
 
-          {/* Intersection chips overlay */}
-          {intersections.map((g, i) => {
-            const a = datasets.find((d) => d.id === g.datasetIds[0])!;
-            const b = datasets.find((d) => d.id === g.datasetIds[1])!;
-            const cx = (a.x + b.x) / 2;
-            const cy = (a.y + b.y) / 2;
-            const id = `g${i}`;
-            const isSel = selected?.type === "group" && selected.id === id;
+          {/* Intersection chips overlay (supports any N-way overlap) */}
+          {intersections.map((g) => {
+            const isSel = selected?.type === "group" && selected.id === g.id;
+            const bg = `hsl(${g.hue} 85% 60% / 0.85)`;
+            const border = `hsl(${g.hue} 90% 70%)`;
             return (
               <button
-                key={id}
+                key={g.id}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelected({ type: "group", id });
+                  setSelected({ type: "group", id: g.id });
                   setTab("shared");
                 }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 px-3 py-1.5 rounded-full text-xs font-medium border backdrop-blur-md transition-all hover:scale-105"
+                className="absolute -translate-x-1/2 -translate-y-1/2 px-3 py-1.5 rounded-full text-xs font-semibold border backdrop-blur-md transition-all hover:scale-105 whitespace-nowrap"
                 style={{
-                  left: cx,
-                  top: cy,
-                  background: "hsl(var(--intersection) / 0.92)",
-                  color: "hsl(var(--background))",
-                  borderColor: "hsl(var(--intersection))",
-                  boxShadow: isSel ? "0 0 0 3px hsl(var(--intersection) / 0.4)" : "0 4px 20px hsl(0 0% 0% / 0.4)",
+                  left: g.centerX,
+                  top: g.centerY,
+                  background: bg,
+                  color: "hsl(220 26% 8%)",
+                  borderColor: border,
+                  boxShadow: isSel
+                    ? `0 0 0 3px hsl(${g.hue} 90% 70% / 0.45), 0 6px 24px hsl(${g.hue} 80% 30% / 0.5)`
+                    : `0 4px 18px hsl(${g.hue} 80% 20% / 0.5)`,
                 }}
+                title={`${g.label} — ${g.sharedValues.length} shared values`}
               >
-                ∩ {g.sharedValues.length} shared
+                {g.label} · ∩ {g.sharedValues.length}
               </button>
             );
           })}
