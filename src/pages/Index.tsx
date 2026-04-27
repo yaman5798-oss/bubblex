@@ -31,7 +31,7 @@ const Index = () => {
   const [jumpIndex, setJumpIndex] = useState(0);
   const jumpInputRef = useRef<HTMLInputElement>(null);
 
-  const intersections = useMemo(() => computeIntersections(datasets), [datasets]);
+  const intersections = useMemo(() => computeIntersectionRegions(datasets), [datasets]);
 
   type JumpItem =
     | { kind: "dataset"; id: string; label: string; sub: string; colorStyle: string }
