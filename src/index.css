@@ -8,8 +8,19 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 220 26% 8%;
+    --foreground: 210 40% 98%;
+    --canvas-bg: 220 30% 6%;
+    --canvas-grid: 220 20% 14%;
+    --dataset-1: 280 85% 65%;
+    --dataset-2: 190 90% 55%;
+    --dataset-3: 145 70% 55%;
+    --dataset-4: 25 90% 60%;
+    --dataset-5: 340 85% 65%;
+    --dataset-6: 60 85% 60%;
+    --intersection: 0 0% 100%;
+    --panel: 220 26% 11%;
+    --panel-border: 220 20% 18%;
 
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
