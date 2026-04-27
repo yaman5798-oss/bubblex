@@ -355,7 +355,7 @@ const Index = () => {
                 transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG}) scale(${d.scale})`}
                 style={{ pointerEvents: "auto", cursor: dragId === d.id ? "grabbing" : "grab" }}
                 onPointerDown={(e) => onPointerDown(e, d.id)}
-                onWheel={(e) => onWheelOval(e, d.id)}
+                
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelected({ type: "dataset", id: d.id });
