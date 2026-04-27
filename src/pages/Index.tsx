@@ -13,6 +13,7 @@ import {
   extractValues,
   materializeGroup,
   parseFile,
+  pointInEllipse,
   sharedValuesFor,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
@@ -124,6 +125,7 @@ const Index = () => {
           values: extractValues(rows),
           x: 200 + ((datasets.length + i) % 4) * 180,
           y: ch / 2 + (((datasets.length + i) % 2) - 0.5) * 120,
+          scale: 1,
           colorVar,
         });
       } catch (e) {
@@ -172,6 +174,37 @@ const Index = () => {
     }
     setDragId(null);
   };
+
+  // Mouse-wheel resize: scroll over an oval to grow/shrink it.
+  // Attached natively so we can preventDefault (passive: false).
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const rect = el.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      // Find topmost oval under cursor (last in array = drawn on top).
+      let hit: string | null = null;
+      for (let i = datasets.length - 1; i >= 0; i--) {
+        const d = datasets[i];
+        if (pointInEllipse(px, py, d.x, d.y, d.scale ?? 1)) {
+          hit = d.id;
+          break;
+        }
+      }
+      if (!hit) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      setDatasets((arr) =>
+        arr.map((d) =>
+          d.id === hit ? { ...d, scale: Math.min(3, Math.max(0.3, d.scale * factor)) } : d
+        )
+      );
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [datasets]);
 
   const removeDataset = (id: string) => {
     clearIntersectionCache(id);
@@ -285,8 +318,8 @@ const Index = () => {
                   <ellipse
                     cx={d.x}
                     cy={d.y}
-                    rx={ELLIPSE_RX}
-                    ry={ELLIPSE_RY}
+                    rx={ELLIPSE_RX * d.scale}
+                    ry={ELLIPSE_RY * d.scale}
                     transform={`rotate(${ELLIPSE_ROT_DEG} ${d.x} ${d.y})`}
                   />
                 </clipPath>
@@ -319,9 +352,10 @@ const Index = () => {
             {datasets.map((d) => (
               <g
                 key={d.id}
-                transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG})`}
+                transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG}) scale(${d.scale})`}
                 style={{ pointerEvents: "auto", cursor: dragId === d.id ? "grabbing" : "grab" }}
                 onPointerDown={(e) => onPointerDown(e, d.id)}
+                
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelected({ type: "dataset", id: d.id });
@@ -332,14 +366,14 @@ const Index = () => {
                   ry={ELLIPSE_RY}
                   fill={`url(#grad-${d.id})`}
                   stroke={`hsl(var(${d.colorVar}))`}
-                  strokeWidth={selectedDataset?.id === d.id ? 3 : 2}
+                  strokeWidth={(selectedDataset?.id === d.id ? 3 : 2) / d.scale}
                 />
                 <text
                   x={0}
                   y={-ELLIPSE_RY + 24}
                   textAnchor="middle"
                   fill={`hsl(var(${d.colorVar}))`}
-                  fontSize={14}
+                  fontSize={14 / d.scale}
                   fontWeight={600}
                   transform={`rotate(${-ELLIPSE_ROT_DEG})`}
                 >
@@ -350,7 +384,7 @@ const Index = () => {
                   y={-ELLIPSE_RY + 42}
                   textAnchor="middle"
                   fill="hsl(var(--muted-foreground))"
-                  fontSize={11}
+                  fontSize={11 / d.scale}
                   transform={`rotate(${-ELLIPSE_ROT_DEG})`}
                 >
                   {d.rows.length} rows · {d.values.size} unique values

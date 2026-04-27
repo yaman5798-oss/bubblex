@@ -8,6 +8,8 @@ export interface Dataset {
   values: Set<string>; // normalized cell values for intersection
   x: number;
   y: number;
+  /** Size multiplier for the oval (1 = default). Adjust via mouse wheel. */
+  scale: number;
   colorVar: string; // e.g. "--dataset-1"
 }
 
@@ -60,9 +62,11 @@ const rotatePoint = (px: number, py: number, cx: number, cy: number, deg: number
   return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
 };
 
-export const pointInEllipse = (px: number, py: number, cx: number, cy: number) => {
+export const pointInEllipse = (px: number, py: number, cx: number, cy: number, scale = 1) => {
   const { x, y } = rotatePoint(px, py, cx, cy, ELLIPSE_ROT_DEG);
-  return (x * x) / (ELLIPSE_RX * ELLIPSE_RX) + (y * y) / (ELLIPSE_RY * ELLIPSE_RY) <= 1;
+  const rx = ELLIPSE_RX * scale;
+  const ry = ELLIPSE_RY * scale;
+  return (x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1;
 };
 
 export const ellipsesOverlap = (a: Dataset, b: Dataset) => {
@@ -158,13 +162,16 @@ const hueFor = (key: string) => {
 };
 
 /**
- * Coarse 28px-grid scan (~4x faster than 14px) — fine enough to detect
- * overlap regions for these large ovals. Cheap on every drag frame.
+ * Coarse grid scan. For each grid cell we record EVERY ≥2 subset of ovals
+ * that contains the point — this guarantees pair/triple overlaps are detected
+ * even when a deeper N-way overlap exists in the same area, and even when the
+ * deeper subset has no shared values.
  */
 export const computeIntersectionRegions = (datasets: Dataset[]): IntersectionRegion[] => {
   if (datasets.length < 2) return [];
 
-  const pad = Math.max(ELLIPSE_RX, ELLIPSE_RY) + 20;
+  const maxScale = datasets.reduce((m, d) => Math.max(m, d.scale ?? 1), 1);
+  const pad = Math.max(ELLIPSE_RX, ELLIPSE_RY) * maxScale + 20;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const d of datasets) {
     if (d.x - pad < minX) minX = d.x - pad;
@@ -174,26 +181,41 @@ export const computeIntersectionRegions = (datasets: Dataset[]): IntersectionReg
   }
   const step = 28;
   const buckets = new Map<string, { ids: string[]; sx: number; sy: number; n: number }>();
+
+  // Cap subset enumeration depth to keep scan O(2^k) per cell bounded.
+  // 6 → 63 subsets per cell max; matches our 6 dataset colors comfortably.
+  const MAX_SUBSET = 6;
+
   for (let x = minX; x <= maxX; x += step) {
     for (let y = minY; y <= maxY; y += step) {
-      let inside: string[] | null = null;
+      const inside: string[] = [];
       for (const d of datasets) {
-        if (pointInEllipse(x, y, d.x, d.y)) {
-          if (!inside) inside = [];
-          inside.push(d.id);
-        }
+        if (pointInEllipse(x, y, d.x, d.y, d.scale ?? 1)) inside.push(d.id);
       }
-      if (!inside || inside.length < 2) continue;
+      if (inside.length < 2) continue;
       inside.sort();
-      const key = inside.join("|");
-      let b = buckets.get(key);
-      if (!b) {
-        b = { ids: inside, sx: 0, sy: 0, n: 0 };
-        buckets.set(key, b);
+
+      const limit = Math.min(inside.length, MAX_SUBSET);
+      // Enumerate all non-empty subsets of size ≥ 2 up to `limit`.
+      const n = inside.length;
+      const total = 1 << Math.min(n, MAX_SUBSET);
+      const slice = inside.slice(0, limit);
+      for (let mask = 3; mask < total; mask++) {
+        // need at least 2 bits set
+        if ((mask & (mask - 1)) === 0) continue;
+        const ids: string[] = [];
+        for (let i = 0; i < limit; i++) if (mask & (1 << i)) ids.push(slice[i]);
+        if (ids.length < 2) continue;
+        const key = ids.join("|");
+        let b = buckets.get(key);
+        if (!b) {
+          b = { ids, sx: 0, sy: 0, n: 0 };
+          buckets.set(key, b);
+        }
+        b.sx += x;
+        b.sy += y;
+        b.n += 1;
       }
-      b.sx += x;
-      b.sy += y;
-      b.n += 1;
     }
   }
 
