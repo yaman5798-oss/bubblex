@@ -275,11 +275,47 @@ const Index = () => {
             <defs>
               {datasets.map((d) => (
                 <radialGradient key={d.id} id={`grad-${d.id}`} cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor={`hsl(var(${d.colorVar}) / 0.45)`} />
-                  <stop offset="100%" stopColor={`hsl(var(${d.colorVar}) / 0.22)`} />
+                  <stop offset="0%" stopColor={`hsl(var(${d.colorVar}) / 0.40)`} />
+                  <stop offset="100%" stopColor={`hsl(var(${d.colorVar}) / 0.18)`} />
                 </radialGradient>
               ))}
+              {/* Per-dataset clip used to intersect ovals into a filled overlap region */}
+              {datasets.map((d) => (
+                <clipPath key={`clip-${d.id}`} id={`clip-${d.id}`} clipPathUnits="userSpaceOnUse">
+                  <ellipse
+                    cx={d.x}
+                    cy={d.y}
+                    rx={ELLIPSE_RX}
+                    ry={ELLIPSE_RY}
+                    transform={`rotate(${ELLIPSE_ROT_DEG} ${d.x} ${d.y})`}
+                  />
+                </clipPath>
+              ))}
             </defs>
+
+            {/* Filled colored intersection regions: nest clipPaths so the fill
+                is only visible inside ALL participating ovals. */}
+            {intersections.map((g) => {
+              const ds = g.datasetIds.map((id) => datasets.find((x) => x.id === id)!).filter(Boolean);
+              if (ds.length < 2) return null;
+              const isSel = selected?.type === "group" && selected.id === g.id;
+              // Build nested <g clip-path> wrappers, innermost contains the fill rect
+              let node: JSX.Element = (
+                <rect
+                  x={-100000}
+                  y={-100000}
+                  width={200000}
+                  height={200000}
+                  fill={`hsl(${g.hue} 90% 55%)`}
+                  fillOpacity={isSel ? 0.55 : 0.38}
+                />
+              );
+              for (const d of ds) {
+                node = <g clipPath={`url(#clip-${d.id})`}>{node}</g>;
+              }
+              return <g key={`fill-${g.id}`}>{node}</g>;
+            })}
+
             {datasets.map((d) => (
               <g
                 key={d.id}
@@ -297,7 +333,6 @@ const Index = () => {
                   fill={`url(#grad-${d.id})`}
                   stroke={`hsl(var(${d.colorVar}))`}
                   strokeWidth={selectedDataset?.id === d.id ? 3 : 2}
-                  style={{ mixBlendMode: "screen" }}
                 />
                 <text
                   x={0}
