@@ -50,7 +50,7 @@ const Index = () => {
       kind: "group",
       id: g.id,
       label: g.label,
-      sub: `∩ ${g.sharedValues.length} shared · ${g.datasetIds.length} sets`,
+      sub: `∩ ${g.sharedCount} shared · ${g.datasetIds.length} sets`,
       colorStyle: `hsl(${g.hue} 85% 60%)`,
     }));
     const all = [...ds, ...gs];
