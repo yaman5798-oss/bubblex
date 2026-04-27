@@ -62,9 +62,11 @@ const rotatePoint = (px: number, py: number, cx: number, cy: number, deg: number
   return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
 };
 
-export const pointInEllipse = (px: number, py: number, cx: number, cy: number) => {
+export const pointInEllipse = (px: number, py: number, cx: number, cy: number, scale = 1) => {
   const { x, y } = rotatePoint(px, py, cx, cy, ELLIPSE_ROT_DEG);
-  return (x * x) / (ELLIPSE_RX * ELLIPSE_RX) + (y * y) / (ELLIPSE_RY * ELLIPSE_RY) <= 1;
+  const rx = ELLIPSE_RX * scale;
+  const ry = ELLIPSE_RY * scale;
+  return (x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1;
 };
 
 export const ellipsesOverlap = (a: Dataset, b: Dataset) => {
