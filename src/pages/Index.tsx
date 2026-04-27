@@ -322,21 +322,42 @@ const GroupPanel = ({
   tab: "shared" | "unique";
   setTab: (t: "shared" | "unique") => void;
 }) => {
-  const [a, b] = group.datasetIds.map((id) => datasets.find((d) => d.id === id)!);
+  const groupDatasets = group.datasetIds
+    .map((id) => datasets.find((d) => d.id === id))
+    .filter((d): d is Dataset => !!d);
   const sharedSet = useMemo(() => new Set(group.sharedValues), [group]);
-  const uniqueA = a.rows.filter((r) => !Object.values(r).some((v) => sharedSet.has(String(v ?? "").trim().toLowerCase())));
-  const uniqueB = b.rows.filter((r) => !Object.values(r).some((v) => sharedSet.has(String(v ?? "").trim().toLowerCase())));
+  const uniqueByDs = groupDatasets.map((ds) => ({
+    ds,
+    rows: ds.rows.filter(
+      (r) => !Object.values(r).some((v) => sharedSet.has(String(v ?? "").trim().toLowerCase()))
+    ),
+  }));
 
   return (
     <div className="p-4 space-y-4">
       <div>
         <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Intersection</p>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: `hsl(var(${a.colorVar}))` }} />
-          <span className="truncate">{a.name}</span>
-          <span className="text-muted-foreground">∩</span>
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: `hsl(var(${b.colorVar}))` }} />
-          <span className="truncate">{b.name}</span>
+        <div
+          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-semibold mb-2"
+          style={{
+            background: `hsl(${group.hue} 85% 60% / 0.2)`,
+            color: `hsl(${group.hue} 90% 75%)`,
+            border: `1px solid hsl(${group.hue} 85% 60% / 0.5)`,
+          }}
+        >
+          {group.label}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          {groupDatasets.map((d, i) => (
+            <span key={d.id} className="inline-flex items-center gap-1.5">
+              {i > 0 && <span className="text-muted-foreground">∩</span>}
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ background: `hsl(var(${d.colorVar}))` }}
+              />
+              <span className="truncate max-w-[140px]">{d.name}</span>
+            </span>
+          ))}
         </div>
       </div>
 
@@ -371,18 +392,14 @@ const GroupPanel = ({
         </div>
       ) : (
         <div className="space-y-3">
-          <div>
-            <p className="text-xs font-semibold mb-1" style={{ color: `hsl(var(${a.colorVar}))` }}>
-              Only in {a.name} ({uniqueA.length})
-            </p>
-            <RowsPreview rows={uniqueA} />
-          </div>
-          <div>
-            <p className="text-xs font-semibold mb-1" style={{ color: `hsl(var(${b.colorVar}))` }}>
-              Only in {b.name} ({uniqueB.length})
-            </p>
-            <RowsPreview rows={uniqueB} />
-          </div>
+          {uniqueByDs.map(({ ds, rows }) => (
+            <div key={ds.id}>
+              <p className="text-xs font-semibold mb-1" style={{ color: `hsl(var(${ds.colorVar}))` }}>
+                Only in {ds.name} ({rows.length})
+              </p>
+              <RowsPreview rows={rows} />
+            </div>
+          ))}
         </div>
       )}
     </div>
