@@ -89,7 +89,7 @@ const Index = () => {
   };
 
   const selectedGroup: IntersectionGroup | null =
-    selected?.type === "group" ? intersections.find((_, i) => `g${i}` === selected.id) ?? null : null;
+    selected?.type === "group" ? intersections.find((g) => g.id === selected.id) ?? null : null;
   const selectedDataset: Dataset | null =
     selected?.type === "dataset" ? datasets.find((d) => d.id === selected.id) ?? null : null;
 
@@ -170,8 +170,8 @@ const Index = () => {
             <defs>
               {datasets.map((d) => (
                 <radialGradient key={d.id} id={`grad-${d.id}`} cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor={`hsl(var(${d.colorVar}) / 0.55)`} />
-                  <stop offset="100%" stopColor={`hsl(var(${d.colorVar}) / 0.18)`} />
+                  <stop offset="0%" stopColor={`hsl(var(${d.colorVar}) / 0.45)`} />
+                  <stop offset="100%" stopColor={`hsl(var(${d.colorVar}) / 0.22)`} />
                 </radialGradient>
               ))}
             </defs>
@@ -219,33 +219,33 @@ const Index = () => {
             ))}
           </svg>
 
-          {/* Intersection chips overlay */}
-          {intersections.map((g, i) => {
-            const a = datasets.find((d) => d.id === g.datasetIds[0])!;
-            const b = datasets.find((d) => d.id === g.datasetIds[1])!;
-            const cx = (a.x + b.x) / 2;
-            const cy = (a.y + b.y) / 2;
-            const id = `g${i}`;
-            const isSel = selected?.type === "group" && selected.id === id;
+          {/* Intersection chips overlay (supports any N-way overlap) */}
+          {intersections.map((g) => {
+            const isSel = selected?.type === "group" && selected.id === g.id;
+            const bg = `hsl(${g.hue} 85% 60% / 0.85)`;
+            const border = `hsl(${g.hue} 90% 70%)`;
             return (
               <button
-                key={id}
+                key={g.id}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelected({ type: "group", id });
+                  setSelected({ type: "group", id: g.id });
                   setTab("shared");
                 }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 px-3 py-1.5 rounded-full text-xs font-medium border backdrop-blur-md transition-all hover:scale-105"
+                className="absolute -translate-x-1/2 -translate-y-1/2 px-3 py-1.5 rounded-full text-xs font-semibold border backdrop-blur-md transition-all hover:scale-105 whitespace-nowrap"
                 style={{
-                  left: cx,
-                  top: cy,
-                  background: "hsl(var(--intersection) / 0.92)",
-                  color: "hsl(var(--background))",
-                  borderColor: "hsl(var(--intersection))",
-                  boxShadow: isSel ? "0 0 0 3px hsl(var(--intersection) / 0.4)" : "0 4px 20px hsl(0 0% 0% / 0.4)",
+                  left: g.centerX,
+                  top: g.centerY,
+                  background: bg,
+                  color: "hsl(220 26% 8%)",
+                  borderColor: border,
+                  boxShadow: isSel
+                    ? `0 0 0 3px hsl(${g.hue} 90% 70% / 0.45), 0 6px 24px hsl(${g.hue} 80% 30% / 0.5)`
+                    : `0 4px 18px hsl(${g.hue} 80% 20% / 0.5)`,
                 }}
+                title={`${g.label} — ${g.sharedValues.length} shared values`}
               >
-                ∩ {g.sharedValues.length} shared
+                {g.label} · ∩ {g.sharedValues.length}
               </button>
             );
           })}
@@ -322,21 +322,42 @@ const GroupPanel = ({
   tab: "shared" | "unique";
   setTab: (t: "shared" | "unique") => void;
 }) => {
-  const [a, b] = group.datasetIds.map((id) => datasets.find((d) => d.id === id)!);
+  const groupDatasets = group.datasetIds
+    .map((id) => datasets.find((d) => d.id === id))
+    .filter((d): d is Dataset => !!d);
   const sharedSet = useMemo(() => new Set(group.sharedValues), [group]);
-  const uniqueA = a.rows.filter((r) => !Object.values(r).some((v) => sharedSet.has(String(v ?? "").trim().toLowerCase())));
-  const uniqueB = b.rows.filter((r) => !Object.values(r).some((v) => sharedSet.has(String(v ?? "").trim().toLowerCase())));
+  const uniqueByDs = groupDatasets.map((ds) => ({
+    ds,
+    rows: ds.rows.filter(
+      (r) => !Object.values(r).some((v) => sharedSet.has(String(v ?? "").trim().toLowerCase()))
+    ),
+  }));
 
   return (
     <div className="p-4 space-y-4">
       <div>
         <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Intersection</p>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: `hsl(var(${a.colorVar}))` }} />
-          <span className="truncate">{a.name}</span>
-          <span className="text-muted-foreground">∩</span>
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: `hsl(var(${b.colorVar}))` }} />
-          <span className="truncate">{b.name}</span>
+        <div
+          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-semibold mb-2"
+          style={{
+            background: `hsl(${group.hue} 85% 60% / 0.2)`,
+            color: `hsl(${group.hue} 90% 75%)`,
+            border: `1px solid hsl(${group.hue} 85% 60% / 0.5)`,
+          }}
+        >
+          {group.label}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          {groupDatasets.map((d, i) => (
+            <span key={d.id} className="inline-flex items-center gap-1.5">
+              {i > 0 && <span className="text-muted-foreground">∩</span>}
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ background: `hsl(var(${d.colorVar}))` }}
+              />
+              <span className="truncate max-w-[140px]">{d.name}</span>
+            </span>
+          ))}
         </div>
       </div>
 
@@ -371,18 +392,14 @@ const GroupPanel = ({
         </div>
       ) : (
         <div className="space-y-3">
-          <div>
-            <p className="text-xs font-semibold mb-1" style={{ color: `hsl(var(${a.colorVar}))` }}>
-              Only in {a.name} ({uniqueA.length})
-            </p>
-            <RowsPreview rows={uniqueA} />
-          </div>
-          <div>
-            <p className="text-xs font-semibold mb-1" style={{ color: `hsl(var(${b.colorVar}))` }}>
-              Only in {b.name} ({uniqueB.length})
-            </p>
-            <RowsPreview rows={uniqueB} />
-          </div>
+          {uniqueByDs.map(({ ds, rows }) => (
+            <div key={ds.id}>
+              <p className="text-xs font-semibold mb-1" style={{ color: `hsl(var(${ds.colorVar}))` }}>
+                Only in {ds.name} ({rows.length})
+              </p>
+              <RowsPreview rows={rows} />
+            </div>
+          ))}
         </div>
       )}
     </div>

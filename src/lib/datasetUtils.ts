@@ -86,32 +86,98 @@ export const ellipsesOverlap = (a: Dataset, b: Dataset) => {
 };
 
 export interface IntersectionGroup {
+  id: string;
   datasetIds: string[];
   sharedValues: string[];
   rowsByDataset: Record<string, Record<string, unknown>[]>;
+  centerX: number;
+  centerY: number;
+  /** HSL hue assigned for this group's color */
+  hue: number;
+  /** Display name, e.g. "A ∩ B ∩ C" */
+  label: string;
 }
 
+// Sample a grid of points; each point is "in" a set of datasets. Cells with >=2 datasets
+// constitute an intersection region. Group cells by the same dataset-subset to find
+// each distinct overlap region (handles any N-way overlap).
 export const computeIntersections = (datasets: Dataset[]): IntersectionGroup[] => {
-  const groups: IntersectionGroup[] = [];
-  // pairwise only (clearer UX); could extend to N-way
-  for (let i = 0; i < datasets.length; i++) {
-    for (let j = i + 1; j < datasets.length; j++) {
-      const a = datasets[i];
-      const b = datasets[j];
-      if (!ellipsesOverlap(a, b)) continue;
-      const shared: string[] = [];
-      for (const v of a.values) if (b.values.has(v)) shared.push(v);
-      if (shared.length === 0) continue;
-      const sharedSet = new Set(shared);
-      const rowsA = a.rows.filter((r) => Object.values(r).some((v) => sharedSet.has(normalizeValue(v))));
-      const rowsB = b.rows.filter((r) => Object.values(r).some((v) => sharedSet.has(normalizeValue(v))));
-      groups.push({
-        datasetIds: [a.id, b.id],
-        sharedValues: shared,
-        rowsByDataset: { [a.id]: rowsA, [b.id]: rowsB },
-      });
+  if (datasets.length < 2) return [];
+
+  // Bounding box of all ovals (with padding)
+  const pad = Math.max(ELLIPSE_RX, ELLIPSE_RY) + 20;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const d of datasets) {
+    minX = Math.min(minX, d.x - pad);
+    minY = Math.min(minY, d.y - pad);
+    maxX = Math.max(maxX, d.x + pad);
+    maxY = Math.max(maxY, d.y + pad);
+  }
+  const step = 14;
+  const buckets = new Map<string, { ids: string[]; xs: number[]; ys: number[] }>();
+  for (let x = minX; x <= maxX; x += step) {
+    for (let y = minY; y <= maxY; y += step) {
+      const inside: string[] = [];
+      for (const d of datasets) if (pointInEllipse(x, y, d.x, d.y)) inside.push(d.id);
+      if (inside.length < 2) continue;
+      const key = inside.slice().sort().join("|");
+      let b = buckets.get(key);
+      if (!b) {
+        b = { ids: inside.slice().sort(), xs: [], ys: [] };
+        buckets.set(key, b);
+      }
+      b.xs.push(x);
+      b.ys.push(y);
     }
   }
+
+  // Order buckets deterministically so colors stay stable as ovals move.
+  const keys = Array.from(buckets.keys()).sort();
+  const groups: IntersectionGroup[] = [];
+  keys.forEach((key, idx) => {
+    const b = buckets.get(key)!;
+    const ids = b.ids;
+    // Compute shared values: intersection of all datasets' value sets
+    const sets = ids.map((id) => datasets.find((d) => d.id === id)!.values);
+    const smallest = sets.reduce((a, c) => (a.size <= c.size ? a : c));
+    const shared: string[] = [];
+    for (const v of smallest) {
+      let all = true;
+      for (const s of sets) if (!s.has(v)) { all = false; break; }
+      if (all) shared.push(v);
+    }
+    if (shared.length === 0) return;
+    const sharedSet = new Set(shared);
+    const rowsByDataset: Record<string, Record<string, unknown>[]> = {};
+    for (const id of ids) {
+      const ds = datasets.find((d) => d.id === id)!;
+      rowsByDataset[id] = ds.rows.filter((r) =>
+        Object.values(r).some((v) => sharedSet.has(normalizeValue(v)))
+      );
+    }
+    const cx = b.xs.reduce((a, c) => a + c, 0) / b.xs.length;
+    const cy = b.ys.reduce((a, c) => a + c, 0) / b.ys.length;
+    // Stable hue from the dataset-subset key
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    const hue = h % 360;
+    const label = ids
+      .map((id) => {
+        const n = datasets.find((d) => d.id === id)!.name.replace(/\.[^.]+$/, "");
+        return n.length > 14 ? n.slice(0, 12) + "…" : n;
+      })
+      .join(" ∩ ");
+    groups.push({
+      id: `g-${key}`,
+      datasetIds: ids,
+      sharedValues: shared,
+      rowsByDataset,
+      centerX: cx,
+      centerY: cy,
+      hue,
+      label,
+    });
+  });
   return groups;
 };
 
