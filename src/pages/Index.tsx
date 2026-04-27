@@ -327,40 +327,94 @@ const Index = () => {
 
         {/* Side panel */}
         <aside className="w-[380px] border-l border-[hsl(var(--panel-border))] bg-[hsl(var(--panel))] flex flex-col min-h-0">
-          <div className="px-4 py-3 border-b border-[hsl(var(--panel-border))]">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Datasets</h2>
+          <div className="px-4 py-3 border-b border-[hsl(var(--panel-border))] space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Jump to
+              </h2>
+              <kbd className="text-[10px] px-1.5 py-0.5 rounded border border-[hsl(var(--panel-border))] text-muted-foreground">
+                ⌘K
+              </kbd>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                ref={jumpInputRef}
+                value={jumpQuery}
+                onChange={(e) => setJumpQuery(e.target.value)}
+                onKeyDown={onJumpKeyDown}
+                placeholder="Search datasets or intersections…"
+                className="h-8 pl-7 pr-7 text-xs bg-background/50"
+              />
+              {jumpQuery && (
+                <button
+                  onClick={() => setJumpQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              ↑ ↓ navigate · Enter select · Esc clear
+            </p>
           </div>
-          <div className="overflow-y-auto max-h-64 border-b border-[hsl(var(--panel-border))]">
+          <div className="overflow-y-auto max-h-72 border-b border-[hsl(var(--panel-border))]">
             {datasets.length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">No files yet.</p>
+            ) : jumpItems.length === 0 ? (
+              <p className="p-4 text-sm text-muted-foreground">No matches.</p>
             ) : (
-              datasets.map((d) => (
-                <div
-                  key={d.id}
-                  className={`flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 cursor-pointer ${
-                    selectedDataset?.id === d.id ? "bg-white/5" : ""
-                  }`}
-                  onClick={() => setSelected({ type: "dataset", id: d.id })}
-                >
-                  <span
-                    className="h-3 w-3 rounded-full shrink-0"
-                    style={{ background: `hsl(var(${d.colorVar}))` }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">{d.name}</p>
-                    <p className="text-xs text-muted-foreground">{d.rows.length} rows</p>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeDataset(d.id);
-                    }}
-                    className="text-muted-foreground hover:text-destructive p-1"
+              jumpItems.map((item, i) => {
+                const isActive = i === jumpIndex;
+                const isSelected =
+                  (item.kind === "dataset" && selectedDataset?.id === item.id) ||
+                  (item.kind === "group" && selectedGroup?.id === item.id);
+                return (
+                  <div
+                    key={`${item.kind}-${item.id}`}
+                    className={`flex items-center gap-3 px-4 py-2 cursor-pointer border-l-2 ${
+                      isActive
+                        ? "bg-white/10 border-foreground"
+                        : isSelected
+                        ? "bg-white/5 border-transparent"
+                        : "hover:bg-white/5 border-transparent"
+                    }`}
+                    onMouseEnter={() => setJumpIndex(i)}
+                    onClick={() => selectJumpItem(item)}
                   >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))
+                    <span
+                      className={`h-3 w-3 shrink-0 ${
+                        item.kind === "group" ? "rotate-45" : "rounded-full"
+                      }`}
+                      style={{ background: item.colorStyle }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate flex items-center gap-1.5">
+                        <span className="truncate">{item.label}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        <span className="uppercase tracking-wider mr-1">
+                          {item.kind === "group" ? "intersection" : "dataset"}
+                        </span>
+                        · {item.sub}
+                      </p>
+                    </div>
+                    {item.kind === "dataset" && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeDataset(item.id);
+                        }}
+                        className="text-muted-foreground hover:text-destructive p-1"
+                        title="Remove dataset"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
 
