@@ -323,6 +323,7 @@ const GroupPanel = ({
   tab: "shared" | "unique";
   setTab: (t: "shared" | "unique") => void;
 }) => {
+  const [sharedQuery, setSharedQuery] = useState("");
   const groupDatasets = group.datasetIds
     .map((id) => datasets.find((d) => d.id === id))
     .filter((d): d is Dataset => !!d);
@@ -333,6 +334,10 @@ const GroupPanel = ({
       (r) => !Object.values(r).some((v) => sharedSet.has(String(v ?? "").trim().toLowerCase()))
     ),
   }));
+  const sq = sharedQuery.trim().toLowerCase();
+  const filteredShared = sq
+    ? group.sharedValues.filter((v) => v.toLowerCase().includes(sq))
+    : group.sharedValues;
 
   return (
     <div className="p-4 space-y-4">
