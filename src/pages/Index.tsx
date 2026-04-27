@@ -13,6 +13,7 @@ import {
   extractValues,
   materializeGroup,
   parseFile,
+  pointInEllipse,
   sharedValuesFor,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
