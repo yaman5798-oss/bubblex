@@ -165,20 +165,31 @@ const Index = () => {
     setSelected(null);
   };
 
-  const selectedGroup: IntersectionGroup | null =
+  const selectedRegion: IntersectionRegion | null =
     selected?.type === "group" ? intersections.find((g) => g.id === selected.id) ?? null : null;
+  // Heavy materialization only for the currently selected region.
+  const selectedGroup: IntersectionGroup | null = useMemo(
+    () => (selectedRegion ? materializeGroup(datasets, selectedRegion) : null),
+    [selectedRegion, datasets]
+  );
   const selectedDataset: Dataset | null =
     selected?.type === "dataset" ? datasets.find((d) => d.id === selected.id) ?? null : null;
 
+  // Highlight set for a dataset = union of shared values across its overlap regions.
+  // Memoized per-dataset so the row preview stays fast while dragging others.
   const sharedSetForDataset = useCallback(
     (id: string) => {
       const s = new Set<string>();
       for (const g of intersections) {
-        if (g.datasetIds.includes(id)) g.sharedValues.forEach((v) => s.add(v));
+        if (!g.datasetIds.includes(id)) continue;
+        // sharedValuesFor is cached internally — cheap repeated calls.
+        const region = g;
+        const tmp = materializeGroup(datasets, region).sharedValues;
+        tmp.forEach((v) => s.add(v));
       }
       return s;
     },
-    [intersections]
+    [intersections, datasets]
   );
 
   return (
