@@ -286,8 +286,8 @@ const Index = () => {
                   <ellipse
                     cx={d.x}
                     cy={d.y}
-                    rx={ELLIPSE_RX}
-                    ry={ELLIPSE_RY}
+                    rx={ELLIPSE_RX * d.scale}
+                    ry={ELLIPSE_RY * d.scale}
                     transform={`rotate(${ELLIPSE_ROT_DEG} ${d.x} ${d.y})`}
                   />
                 </clipPath>
