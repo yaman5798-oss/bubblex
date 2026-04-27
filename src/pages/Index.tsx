@@ -6,10 +6,14 @@ import {
   ELLIPSE_RX,
   ELLIPSE_RY,
   IntersectionGroup,
-  computeIntersections,
+  IntersectionRegion,
+  clearIntersectionCache,
+  computeIntersectionRegions,
   downloadIntersectionXlsx,
   extractValues,
+  materializeGroup,
   parseFile,
+  sharedValuesFor,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
 import { Upload, Download, Trash2, FileSpreadsheet, X, Search } from "lucide-react";
@@ -28,7 +32,7 @@ const Index = () => {
   const [jumpIndex, setJumpIndex] = useState(0);
   const jumpInputRef = useRef<HTMLInputElement>(null);
 
-  const intersections = useMemo(() => computeIntersections(datasets), [datasets]);
+  const intersections = useMemo(() => computeIntersectionRegions(datasets), [datasets]);
 
   type JumpItem =
     | { kind: "dataset"; id: string; label: string; sub: string; colorStyle: string }
@@ -47,7 +51,7 @@ const Index = () => {
       kind: "group",
       id: g.id,
       label: g.label,
-      sub: `∩ ${g.sharedValues.length} shared · ${g.datasetIds.length} sets`,
+      sub: `∩ ${g.sharedCount} shared · ${g.datasetIds.length} sets`,
       colorStyle: `hsl(${g.hue} 85% 60%)`,
     }));
     const all = [...ds, ...gs];
@@ -142,40 +146,67 @@ const Index = () => {
     (e.target as Element).setPointerCapture(e.pointerId);
   };
 
+  const rafRef = useRef<number | null>(null);
+  const pendingPos = useRef<{ x: number; y: number } | null>(null);
+
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragId || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - dragOffset.current.x;
-    const y = e.clientY - rect.top - dragOffset.current.y;
-    setDatasets((arr) => arr.map((d) => (d.id === dragId ? { ...d, x, y } : d)));
+    pendingPos.current = {
+      x: e.clientX - rect.left - dragOffset.current.x,
+      y: e.clientY - rect.top - dragOffset.current.y,
+    };
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const p = pendingPos.current;
+      if (!p || !dragId) return;
+      setDatasets((arr) => arr.map((d) => (d.id === dragId ? { ...d, x: p.x, y: p.y } : d)));
+    });
   };
 
-  const endDrag = () => setDragId(null);
+  const endDrag = () => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setDragId(null);
+  };
 
   const removeDataset = (id: string) => {
+    clearIntersectionCache(id);
     setDatasets((d) => d.filter((x) => x.id !== id));
     if (selected?.id === id) setSelected(null);
   };
 
   const clearAll = () => {
+    clearIntersectionCache();
     setDatasets([]);
     setSelected(null);
   };
 
-  const selectedGroup: IntersectionGroup | null =
+  const selectedRegion: IntersectionRegion | null =
     selected?.type === "group" ? intersections.find((g) => g.id === selected.id) ?? null : null;
+  // Heavy materialization only for the currently selected region.
+  const selectedGroup: IntersectionGroup | null = useMemo(
+    () => (selectedRegion ? materializeGroup(datasets, selectedRegion) : null),
+    [selectedRegion, datasets]
+  );
   const selectedDataset: Dataset | null =
     selected?.type === "dataset" ? datasets.find((d) => d.id === selected.id) ?? null : null;
 
+  // Highlight set for a dataset = union of shared values across its overlap regions.
+  // Uses cached sharedValuesFor — no row materialization needed for highlights.
   const sharedSetForDataset = useCallback(
     (id: string) => {
       const s = new Set<string>();
       for (const g of intersections) {
-        if (g.datasetIds.includes(id)) g.sharedValues.forEach((v) => s.add(v));
+        if (!g.datasetIds.includes(id)) continue;
+        sharedValuesFor(datasets, g.datasetIds).forEach((v) => s.add(v));
       }
       return s;
     },
-    [intersections]
+    [intersections, datasets]
   );
 
   return (
@@ -317,9 +348,9 @@ const Index = () => {
                     ? `0 0 0 3px hsl(${g.hue} 90% 70% / 0.45), 0 6px 24px hsl(${g.hue} 80% 30% / 0.5)`
                     : `0 4px 18px hsl(${g.hue} 80% 20% / 0.5)`,
                 }}
-                title={`${g.label} — ${g.sharedValues.length} shared values`}
+                title={`${g.label} — ${g.sharedCount} shared values`}
               >
-                {g.label} · ∩ {g.sharedValues.length}
+                {g.label} · ∩ {g.sharedCount}
               </button>
             );
           })}

@@ -88,7 +88,9 @@ export const ellipsesOverlap = (a: Dataset, b: Dataset) => {
 export interface IntersectionGroup {
   id: string;
   datasetIds: string[];
+  /** Shared cell values (lowercased, trimmed). */
   sharedValues: string[];
+  /** Rows per dataset that contain a shared value. Materialized on demand. */
   rowsByDataset: Record<string, Record<string, unknown>[]>;
   centerX: number;
   centerY: number;
@@ -98,87 +100,163 @@ export interface IntersectionGroup {
   label: string;
 }
 
-// Sample a grid of points; each point is "in" a set of datasets. Cells with >=2 datasets
-// constitute an intersection region. Group cells by the same dataset-subset to find
-// each distinct overlap region (handles any N-way overlap).
-export const computeIntersections = (datasets: Dataset[]): IntersectionGroup[] => {
+/**
+ * Lightweight per-frame info: which subsets overlap, how many shared values,
+ * where to draw the chip. Skips per-row materialization (the slow part).
+ */
+export interface IntersectionRegion {
+  id: string;
+  datasetIds: string[];
+  sharedCount: number;
+  centerX: number;
+  centerY: number;
+  hue: number;
+  label: string;
+}
+
+// Cache pairwise shared-value lists. Datasets are immutable once loaded
+// (rows/values never change), so caching by id pair is safe.
+const pairCache = new Map<string, string[]>();
+const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+export const sharedValuesFor = (datasets: Dataset[], ids: string[]): string[] => {
+  if (ids.length < 2) return [];
+  const sorted = ids.slice().sort();
+  if (sorted.length === 2) {
+    const k = pairKey(sorted[0], sorted[1]);
+    const cached = pairCache.get(k);
+    if (cached) return cached;
+    const a = datasets.find((d) => d.id === sorted[0])!;
+    const b = datasets.find((d) => d.id === sorted[1])!;
+    const [small, big] = a.values.size <= b.values.size ? [a.values, b.values] : [b.values, a.values];
+    const out: string[] = [];
+    for (const v of small) if (big.has(v)) out.push(v);
+    pairCache.set(k, out);
+    return out;
+  }
+  // For N>2: start with the cached pair, then prune against the rest.
+  let working = sharedValuesFor(datasets, [sorted[0], sorted[1]]);
+  for (let i = 2; i < sorted.length && working.length; i++) {
+    const s = datasets.find((d) => d.id === sorted[i])!.values;
+    working = working.filter((v) => s.has(v));
+  }
+  return working;
+};
+
+const labelFor = (datasets: Dataset[], ids: string[]) =>
+  ids
+    .map((id) => {
+      const n = datasets.find((d) => d.id === id)!.name.replace(/\.[^.]+$/, "");
+      return n.length > 14 ? n.slice(0, 12) + "…" : n;
+    })
+    .join(" ∩ ");
+
+const hueFor = (key: string) => {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return h % 360;
+};
+
+/**
+ * Coarse 28px-grid scan (~4x faster than 14px) — fine enough to detect
+ * overlap regions for these large ovals. Cheap on every drag frame.
+ */
+export const computeIntersectionRegions = (datasets: Dataset[]): IntersectionRegion[] => {
   if (datasets.length < 2) return [];
 
-  // Bounding box of all ovals (with padding)
   const pad = Math.max(ELLIPSE_RX, ELLIPSE_RY) + 20;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const d of datasets) {
-    minX = Math.min(minX, d.x - pad);
-    minY = Math.min(minY, d.y - pad);
-    maxX = Math.max(maxX, d.x + pad);
-    maxY = Math.max(maxY, d.y + pad);
+    if (d.x - pad < minX) minX = d.x - pad;
+    if (d.y - pad < minY) minY = d.y - pad;
+    if (d.x + pad > maxX) maxX = d.x + pad;
+    if (d.y + pad > maxY) maxY = d.y + pad;
   }
-  const step = 14;
-  const buckets = new Map<string, { ids: string[]; xs: number[]; ys: number[] }>();
+  const step = 28;
+  const buckets = new Map<string, { ids: string[]; sx: number; sy: number; n: number }>();
   for (let x = minX; x <= maxX; x += step) {
     for (let y = minY; y <= maxY; y += step) {
-      const inside: string[] = [];
-      for (const d of datasets) if (pointInEllipse(x, y, d.x, d.y)) inside.push(d.id);
-      if (inside.length < 2) continue;
-      const key = inside.slice().sort().join("|");
+      let inside: string[] | null = null;
+      for (const d of datasets) {
+        if (pointInEllipse(x, y, d.x, d.y)) {
+          if (!inside) inside = [];
+          inside.push(d.id);
+        }
+      }
+      if (!inside || inside.length < 2) continue;
+      inside.sort();
+      const key = inside.join("|");
       let b = buckets.get(key);
       if (!b) {
-        b = { ids: inside.slice().sort(), xs: [], ys: [] };
+        b = { ids: inside, sx: 0, sy: 0, n: 0 };
         buckets.set(key, b);
       }
-      b.xs.push(x);
-      b.ys.push(y);
+      b.sx += x;
+      b.sy += y;
+      b.n += 1;
     }
   }
 
-  // Order buckets deterministically so colors stay stable as ovals move.
-  const keys = Array.from(buckets.keys()).sort();
-  const groups: IntersectionGroup[] = [];
-  keys.forEach((key, idx) => {
-    const b = buckets.get(key)!;
-    const ids = b.ids;
-    // Compute shared values: intersection of all datasets' value sets
-    const sets = ids.map((id) => datasets.find((d) => d.id === id)!.values);
-    const smallest = sets.reduce((a, c) => (a.size <= c.size ? a : c));
-    const shared: string[] = [];
-    for (const v of smallest) {
-      let all = true;
-      for (const s of sets) if (!s.has(v)) { all = false; break; }
-      if (all) shared.push(v);
-    }
-    if (shared.length === 0) return;
-    const sharedSet = new Set(shared);
-    const rowsByDataset: Record<string, Record<string, unknown>[]> = {};
-    for (const id of ids) {
-      const ds = datasets.find((d) => d.id === id)!;
-      rowsByDataset[id] = ds.rows.filter((r) =>
-        Object.values(r).some((v) => sharedSet.has(normalizeValue(v)))
-      );
-    }
-    const cx = b.xs.reduce((a, c) => a + c, 0) / b.xs.length;
-    const cy = b.ys.reduce((a, c) => a + c, 0) / b.ys.length;
-    // Stable hue from the dataset-subset key
-    let h = 0;
-    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-    const hue = h % 360;
-    const label = ids
-      .map((id) => {
-        const n = datasets.find((d) => d.id === id)!.name.replace(/\.[^.]+$/, "");
-        return n.length > 14 ? n.slice(0, 12) + "…" : n;
-      })
-      .join(" ∩ ");
-    groups.push({
+  const regions: IntersectionRegion[] = [];
+  for (const [key, b] of buckets) {
+    const shared = sharedValuesFor(datasets, b.ids);
+    if (shared.length === 0) continue;
+    regions.push({
       id: `g-${key}`,
-      datasetIds: ids,
-      sharedValues: shared,
-      rowsByDataset,
-      centerX: cx,
-      centerY: cy,
-      hue,
-      label,
+      datasetIds: b.ids,
+      sharedCount: shared.length,
+      centerX: b.sx / b.n,
+      centerY: b.sy / b.n,
+      hue: hueFor(key),
+      label: labelFor(datasets, b.ids),
     });
-  });
-  return groups;
+  }
+  regions.sort((a, c) => (a.id < c.id ? -1 : 1));
+  return regions;
+};
+
+/**
+ * Materialize per-row matches for a single region. Only call when the user
+ * actually inspects/exports — this is the heavy part.
+ */
+export const materializeGroup = (
+  datasets: Dataset[],
+  region: IntersectionRegion
+): IntersectionGroup => {
+  const shared = sharedValuesFor(datasets, region.datasetIds);
+  const sharedSet = new Set(shared);
+  const rowsByDataset: Record<string, Record<string, unknown>[]> = {};
+  for (const id of region.datasetIds) {
+    const ds = datasets.find((d) => d.id === id)!;
+    rowsByDataset[id] = ds.rows.filter((r) =>
+      Object.values(r).some((v) => sharedSet.has(normalizeValue(v)))
+    );
+  }
+  return {
+    id: region.id,
+    datasetIds: region.datasetIds,
+    sharedValues: shared,
+    rowsByDataset,
+    centerX: region.centerX,
+    centerY: region.centerY,
+    hue: region.hue,
+    label: region.label,
+  };
+};
+
+/** Backwards-compatible: full materialization of every region. */
+export const computeIntersections = (datasets: Dataset[]): IntersectionGroup[] =>
+  computeIntersectionRegions(datasets).map((r) => materializeGroup(datasets, r));
+
+/** Clear cached pair intersections (call when a dataset is removed). */
+export const clearIntersectionCache = (removedId?: string) => {
+  if (!removedId) {
+    pairCache.clear();
+    return;
+  }
+  for (const k of Array.from(pairCache.keys())) {
+    if (k.includes(removedId)) pairCache.delete(k);
+  }
 };
 
 export const downloadIntersectionXlsx = (
