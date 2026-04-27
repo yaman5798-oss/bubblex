@@ -89,7 +89,7 @@ const Index = () => {
   };
 
   const selectedGroup: IntersectionGroup | null =
-    selected?.type === "group" ? intersections.find((_, i) => `g${i}` === selected.id) ?? null : null;
+    selected?.type === "group" ? intersections.find((g) => g.id === selected.id) ?? null : null;
   const selectedDataset: Dataset | null =
     selected?.type === "dataset" ? datasets.find((d) => d.id === selected.id) ?? null : null;
 
