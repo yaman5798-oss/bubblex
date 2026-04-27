@@ -24,8 +24,81 @@ const Index = () => {
   const [selected, setSelected] = useState<{ type: "group" | "dataset"; id: string } | null>(null);
   const [tab, setTab] = useState<"shared" | "unique">("shared");
   const fileInput = useRef<HTMLInputElement>(null);
+  const [jumpQuery, setJumpQuery] = useState("");
+  const [jumpIndex, setJumpIndex] = useState(0);
+  const jumpInputRef = useRef<HTMLInputElement>(null);
 
   const intersections = useMemo(() => computeIntersections(datasets), [datasets]);
+
+  type JumpItem =
+    | { kind: "dataset"; id: string; label: string; sub: string; colorStyle: string }
+    | { kind: "group"; id: string; label: string; sub: string; colorStyle: string };
+
+  const jumpItems: JumpItem[] = useMemo(() => {
+    const q = jumpQuery.trim().toLowerCase();
+    const ds: JumpItem[] = datasets.map((d) => ({
+      kind: "dataset",
+      id: d.id,
+      label: d.name,
+      sub: `${d.rows.length} rows · ${d.headers.length} cols`,
+      colorStyle: `hsl(var(${d.colorVar}))`,
+    }));
+    const gs: JumpItem[] = intersections.map((g) => ({
+      kind: "group",
+      id: g.id,
+      label: g.label,
+      sub: `∩ ${g.sharedValues.length} shared · ${g.datasetIds.length} sets`,
+      colorStyle: `hsl(${g.hue} 85% 60%)`,
+    }));
+    const all = [...ds, ...gs];
+    if (!q) return all;
+    return all.filter(
+      (it) => it.label.toLowerCase().includes(q) || it.sub.toLowerCase().includes(q)
+    );
+  }, [datasets, intersections, jumpQuery]);
+
+  useEffect(() => {
+    setJumpIndex(0);
+  }, [jumpQuery, datasets.length, intersections.length]);
+
+  // Global Ctrl/Cmd+K to focus jump search
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        jumpInputRef.current?.focus();
+        jumpInputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const selectJumpItem = (item: JumpItem) => {
+    setSelected({ type: item.kind, id: item.id });
+    if (item.kind === "group") setTab("shared");
+  };
+
+  const onJumpKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setJumpIndex((i) => Math.min(i + 1, Math.max(jumpItems.length - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setJumpIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const item = jumpItems[jumpIndex];
+      if (item) {
+        selectJumpItem(item);
+        jumpInputRef.current?.blur();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      if (jumpQuery) setJumpQuery("");
+      else jumpInputRef.current?.blur();
+    }
+  };
 
   const handleFiles = async (files: FileList | null) => {
     if (!files) return;
