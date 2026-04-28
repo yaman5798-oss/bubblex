@@ -11,6 +11,14 @@ export interface Dataset {
   /** Size multiplier for the oval (1 = default). Adjust via mouse wheel. */
   scale: number;
   colorVar: string; // e.g. "--dataset-1"
+  /**
+   * Original parsed worksheet (preserves cell formatting, number formats,
+   * merges, column widths). Re-embedded into exports so users keep the look
+   * of their source file. Optional for backwards compatibility.
+   */
+  sourceSheet?: XLSX.WorkSheet;
+  /** Original sheet name from the source workbook. */
+  sourceSheetName?: string;
 }
 
 export const DATASET_COLORS = [
@@ -38,14 +46,22 @@ export const extractValues = (rows: Record<string, unknown>[]): Set<string> => {
   return set;
 };
 
-export const parseFile = async (file: File): Promise<{ rows: Record<string, unknown>[]; headers: string[] }> => {
+export const parseFile = async (
+  file: File
+): Promise<{
+  rows: Record<string, unknown>[];
+  headers: string[];
+  sourceSheet: XLSX.WorkSheet;
+  sourceSheetName: string;
+}> => {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array" });
+  // cellStyles+cellDates keep formatting and date types intact.
+  const wb = XLSX.read(buf, { type: "array", cellStyles: true, cellDates: true });
   const sheetName = wb.SheetNames[0];
   const sheet = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
   const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
-  return { rows, headers };
+  return { rows, headers, sourceSheet: sheet, sourceSheetName: sheetName };
 };
 
 // Geometry: tilted ellipses (45 deg). Use rotated-frame coordinates for hit-test.
@@ -336,9 +352,106 @@ export const downloadIntersectionXlsx = (
   datasets: Dataset[]
 ) => {
   const wb = XLSX.utils.book_new();
-  const summary = group.sharedValues.map((v) => ({ shared_value: v }));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Shared Values");
 
+  // Helper: sanitize sheet names (Excel forbids \ / ? * [ ] :, max 31 chars).
+  const safe = (n: string, max = 28) =>
+    n.replace(/\.[^.]+$/, "").replace(/[\\/?*[\]:]/g, "_").slice(0, max);
+
+  // 1) Embed each dataset's ORIGINAL sheet first so formatting is preserved
+  //    AND so the shared-values sheet can hyperlink into it. Track the sheet
+  //    name we used per dataset (Excel may force-truncate to 31 chars).
+  const sourceSheetNameByDs: Record<string, string> = {};
+  for (const id of group.datasetIds) {
+    const ds = datasets.find((d) => d.id === id);
+    if (!ds || !ds.sourceSheet) continue;
+    const baseName = `${safe(ds.name, 22)}_source`;
+    let name = baseName.slice(0, 31);
+    let i = 2;
+    while (wb.SheetNames.includes(name)) {
+      const suffix = `_${i++}`;
+      name = (baseName.slice(0, 31 - suffix.length) + suffix);
+    }
+    // Clone the worksheet so we don't mutate the in-memory dataset.
+    const cloned: XLSX.WorkSheet = JSON.parse(JSON.stringify(ds.sourceSheet));
+    XLSX.utils.book_append_sheet(wb, cloned, name);
+    sourceSheetNameByDs[id] = name;
+  }
+
+  // 2) Build the Shared Values sheet with hyperlinks → first occurrence
+  //    of each value in each dataset's source sheet.
+  const sharedHeader = ["shared_value", ...group.datasetIds.map((id) => {
+    const ds = datasets.find((d) => d.id === id);
+    return ds ? safe(ds.name, 26) : id;
+  })];
+
+  // Pre-index every source sheet: normalized cell value → A1 address (first hit).
+  const indexByDs: Record<string, Map<string, string>> = {};
+  for (const id of group.datasetIds) {
+    const ds = datasets.find((d) => d.id === id);
+    const sheetName = sourceSheetNameByDs[id];
+    if (!ds || !sheetName) continue;
+    const sheet = wb.Sheets[sheetName];
+    const ref = sheet["!ref"];
+    const map = new Map<string, string>();
+    if (ref) {
+      const range = XLSX.utils.decode_range(ref);
+      for (let R = range.s.r; R <= range.e.r; R++) {
+        for (let C = range.s.c; C <= range.e.c; C++) {
+          const addr = XLSX.utils.encode_cell({ r: R, c: C });
+          const cell = sheet[addr];
+          if (!cell) continue;
+          const norm = normalizeValue(cell.v);
+          if (norm !== "" && !map.has(norm)) map.set(norm, addr);
+        }
+      }
+    }
+    indexByDs[id] = map;
+  }
+
+  const sharedAoa: (string | null)[][] = [sharedHeader];
+  for (const v of group.sharedValues) {
+    const row: (string | null)[] = [v];
+    for (const id of group.datasetIds) row.push(indexByDs[id]?.get(v) ?? null);
+    sharedAoa.push(row);
+  }
+  const sharedSheet = XLSX.utils.aoa_to_sheet(sharedAoa);
+
+  // Attach hyperlinks. Column 0 = shared_value (link to first dataset that has it).
+  // Columns 1..N = per-dataset cell address links.
+  for (let r = 1; r < sharedAoa.length; r++) {
+    const value = group.sharedValues[r - 1];
+    // Per-dataset address columns
+    for (let c = 0; c < group.datasetIds.length; c++) {
+      const id = group.datasetIds[c];
+      const sheetName = sourceSheetNameByDs[id];
+      const addr = indexByDs[id]?.get(value);
+      if (!sheetName || !addr) continue;
+      const cellAddr = XLSX.utils.encode_cell({ r, c: c + 1 });
+      const cell = sharedSheet[cellAddr];
+      if (cell) {
+        // Excel intra-workbook link: #'Sheet'!A1
+        cell.l = { Target: `#'${sheetName}'!${addr}`, Tooltip: `Open ${sheetName}!${addr}` };
+      }
+    }
+    // Make the shared_value text itself a link to the FIRST dataset that has it.
+    for (const id of group.datasetIds) {
+      const sheetName = sourceSheetNameByDs[id];
+      const addr = indexByDs[id]?.get(value);
+      if (sheetName && addr) {
+        const valueAddr = XLSX.utils.encode_cell({ r, c: 0 });
+        const valueCell = sharedSheet[valueAddr];
+        if (valueCell) {
+          valueCell.l = { Target: `#'${sheetName}'!${addr}`, Tooltip: `Open in ${sheetName}` };
+        }
+        break;
+      }
+    }
+  }
+  // Column widths for readability.
+  sharedSheet["!cols"] = [{ wch: 28 }, ...group.datasetIds.map(() => ({ wch: 18 }))];
+  XLSX.utils.book_append_sheet(wb, sharedSheet, "Shared Values");
+
+  // 3) Per-dataset organized sheets (anchor column first, plus __match__).
   for (const id of group.datasetIds) {
     const ds = datasets.find((d) => d.id === id);
     if (!ds) continue;
@@ -346,10 +459,6 @@ export const downloadIntersectionXlsx = (
     const matched = group.matchedValueByDataset[id] ?? [];
     const anchor = group.anchorColumnByDataset[id] ?? ds.headers[0] ?? "";
 
-    // Build a stable, anchor-first column order. Anchor column comes first,
-    // followed by the rest of the dataset's original headers in original order.
-    // Each row is augmented with `__match__` (the normalized matched value) so
-    // common values are easy to scan and align across sheets.
     const orderedHeaders = [anchor, ...ds.headers.filter((h) => h !== anchor)];
     const shaped = rows.length
       ? rows.map((r, i) => {
@@ -362,8 +471,7 @@ export const downloadIntersectionXlsx = (
     const sheet = XLSX.utils.json_to_sheet(shaped, {
       header: rows.length ? ["__match__", ...orderedHeaders] : undefined,
     });
-    const safeName = ds.name.replace(/[\\/?*[\]:]/g, "_").slice(0, 28);
-    XLSX.utils.book_append_sheet(wb, sheet, `${safeName}_match`);
+    XLSX.utils.book_append_sheet(wb, sheet, `${safe(ds.name)}_match`);
 
     const sharedSet = new Set(group.sharedValues);
     const onlyRows = ds.rows.filter(
@@ -372,12 +480,12 @@ export const downloadIntersectionXlsx = (
     const onlySheet = XLSX.utils.json_to_sheet(
       onlyRows.length ? onlyRows : [{ info: "no unique rows" }]
     );
-    XLSX.utils.book_append_sheet(wb, onlySheet, `${safeName}_only`);
+    XLSX.utils.book_append_sheet(wb, onlySheet, `${safe(ds.name)}_only`);
   }
 
   const names = group.datasetIds
     .map((id) => datasets.find((d) => d.id === id)?.name ?? "set")
     .map((n) => n.replace(/\.[^.]+$/, ""))
     .join("__");
-  XLSX.writeFile(wb, `intersection__${names}.xlsx`);
+  XLSX.writeFile(wb, `intersection__${names}.xlsx`, { cellStyles: true });
 };

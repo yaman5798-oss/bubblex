@@ -17,7 +17,7 @@ import {
   sharedValuesFor,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Trash2, FileSpreadsheet, X, Search } from "lucide-react";
+import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
@@ -32,6 +32,8 @@ const Index = () => {
   const [jumpQuery, setJumpQuery] = useState("");
   const [jumpIndex, setJumpIndex] = useState(0);
   const jumpInputRef = useRef<HTMLInputElement>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   const intersections = useMemo(() => computeIntersectionRegions(datasets), [datasets]);
 
@@ -112,7 +114,7 @@ const Index = () => {
     for (let i = 0; i < arr.length; i++) {
       const f = arr[i];
       try {
-        const { rows, headers } = await parseFile(f);
+        const { rows, headers, sourceSheet, sourceSheetName } = await parseFile(f);
         const id = crypto.randomUUID();
         const colorVar = DATASET_COLORS[(datasets.length + i) % DATASET_COLORS.length];
         const cw = canvasRef.current?.clientWidth ?? 1000;
@@ -127,6 +129,8 @@ const Index = () => {
           y: ch / 2 + (((datasets.length + i) % 2) - 0.5) * 120,
           scale: 1,
           colorVar,
+          sourceSheet,
+          sourceSheetName,
         });
       } catch (e) {
         toast.error(`Failed to parse ${f.name}`);
@@ -210,6 +214,12 @@ const Index = () => {
     clearIntersectionCache(id);
     setDatasets((d) => d.filter((x) => x.id !== id));
     if (selected?.id === id) setSelected(null);
+  };
+
+  const renameDataset = (id: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setDatasets((arr) => arr.map((d) => (d.id === id ? { ...d, name: trimmed } : d)));
   };
 
   const clearAll = () => {
@@ -495,9 +505,32 @@ const Index = () => {
                       style={{ background: item.colorStyle }}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm truncate flex items-center gap-1.5">
-                        <span className="truncate">{item.label}</span>
-                      </p>
+                      {item.kind === "dataset" && renamingId === item.id ? (
+                        <input
+                          autoFocus
+                          value={renameDraft}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === "Enter") {
+                              renameDataset(item.id, renameDraft);
+                              setRenamingId(null);
+                            } else if (e.key === "Escape") {
+                              setRenamingId(null);
+                            }
+                          }}
+                          onBlur={() => {
+                            renameDataset(item.id, renameDraft);
+                            setRenamingId(null);
+                          }}
+                          className="w-full h-7 px-1.5 text-sm rounded bg-background/70 border border-foreground/40 focus:outline-none"
+                        />
+                      ) : (
+                        <p className="text-sm truncate flex items-center gap-1.5">
+                          <span className="truncate">{item.label}</span>
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground truncate">
                         <span className="uppercase tracking-wider mr-1">
                           {item.kind === "group" ? "intersection" : "dataset"}
@@ -505,6 +538,33 @@ const Index = () => {
                         · {item.sub}
                       </p>
                     </div>
+                    {item.kind === "dataset" && renamingId !== item.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const ds = datasets.find((d) => d.id === item.id);
+                          setRenameDraft(ds?.name ?? "");
+                          setRenamingId(item.id);
+                        }}
+                        className="text-muted-foreground hover:text-foreground p-1"
+                        title="Rename dataset"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {item.kind === "dataset" && renamingId === item.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          renameDataset(item.id, renameDraft);
+                          setRenamingId(null);
+                        }}
+                        className="text-muted-foreground hover:text-foreground p-1"
+                        title="Save name"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     {item.kind === "dataset" && (
                       <button
                         onClick={(e) => {
@@ -535,7 +595,11 @@ const Index = () => {
             )}
 
             {selectedDataset && !selectedGroup && (
-              <DatasetPanel dataset={selectedDataset} sharedSet={sharedSetForDataset(selectedDataset.id)} />
+              <DatasetPanel
+                dataset={selectedDataset}
+                sharedSet={sharedSetForDataset(selectedDataset.id)}
+                onRename={(name) => renameDataset(selectedDataset.id, name)}
+              />
             )}
           </div>
         </aside>
@@ -683,12 +747,73 @@ const GroupPanel = ({
   );
 };
 
-const DatasetPanel = ({ dataset, sharedSet }: { dataset: Dataset; sharedSet: Set<string> }) => {
+const DatasetPanel = ({
+  dataset,
+  sharedSet,
+  onRename,
+}: {
+  dataset: Dataset;
+  sharedSet: Set<string>;
+  onRename: (name: string) => void;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(dataset.name);
+  // Keep draft in sync when switching dataset.
+  useEffect(() => {
+    setDraft(dataset.name);
+    setEditing(false);
+  }, [dataset.id, dataset.name]);
+
   return (
     <div className="p-4 space-y-3">
       <div>
         <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Dataset</p>
-        <p className="text-sm font-medium truncate">{dataset.name}</p>
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  onRename(draft);
+                  setEditing(false);
+                } else if (e.key === "Escape") {
+                  setDraft(dataset.name);
+                  setEditing(false);
+                }
+              }}
+              onBlur={() => {
+                onRename(draft);
+                setEditing(false);
+              }}
+              className="flex-1 h-7 px-1.5 text-sm rounded bg-background/70 border border-foreground/40 focus:outline-none"
+            />
+            <button
+              onClick={() => {
+                onRename(draft);
+                setEditing(false);
+              }}
+              className="text-muted-foreground hover:text-foreground p-1"
+              title="Save"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium truncate flex-1" title={dataset.name}>
+              {dataset.name}
+            </p>
+            <button
+              onClick={() => setEditing(true)}
+              className="text-muted-foreground hover:text-foreground p-1"
+              title="Rename dataset"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           {dataset.rows.length} rows · {dataset.headers.length} columns
         </p>
