@@ -46,14 +46,22 @@ export const extractValues = (rows: Record<string, unknown>[]): Set<string> => {
   return set;
 };
 
-export const parseFile = async (file: File): Promise<{ rows: Record<string, unknown>[]; headers: string[] }> => {
+export const parseFile = async (
+  file: File
+): Promise<{
+  rows: Record<string, unknown>[];
+  headers: string[];
+  sourceSheet: XLSX.WorkSheet;
+  sourceSheetName: string;
+}> => {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array" });
+  // cellStyles+cellDates keep formatting and date types intact.
+  const wb = XLSX.read(buf, { type: "array", cellStyles: true, cellDates: true });
   const sheetName = wb.SheetNames[0];
   const sheet = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
   const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
-  return { rows, headers };
+  return { rows, headers, sourceSheet: sheet, sourceSheetName: sheetName };
 };
 
 // Geometry: tilted ellipses (45 deg). Use rotated-frame coordinates for hit-test.
