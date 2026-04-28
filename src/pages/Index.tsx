@@ -17,7 +17,7 @@ import {
   sharedValuesFor,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Trash2, FileSpreadsheet, X, Search } from "lucide-react";
+import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
