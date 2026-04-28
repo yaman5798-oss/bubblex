@@ -27,7 +27,7 @@ const Index = () => {
   const dragOffset = useRef({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<{ type: "group" | "dataset"; id: string } | null>(null);
-  const [tab, setTab] = useState<"shared" | "unique">("shared");
+  const [tab, setTab] = useState<"shared" | "matched" | "unique">("shared");
   const fileInput = useRef<HTMLInputElement>(null);
   const [jumpQuery, setJumpQuery] = useState("");
   const [jumpIndex, setJumpIndex] = useState(0);
