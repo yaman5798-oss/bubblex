@@ -487,5 +487,5 @@ export const downloadIntersectionXlsx = (
     .map((id) => datasets.find((d) => d.id === id)?.name ?? "set")
     .map((n) => n.replace(/\.[^.]+$/, ""))
     .join("__");
-  XLSX.writeFile(wb, `intersection__${names}.xlsx`);
+  XLSX.writeFile(wb, `intersection__${names}.xlsx`, { cellStyles: true });
 };
