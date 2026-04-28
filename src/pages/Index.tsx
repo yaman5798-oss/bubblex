@@ -505,9 +505,32 @@ const Index = () => {
                       style={{ background: item.colorStyle }}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm truncate flex items-center gap-1.5">
-                        <span className="truncate">{item.label}</span>
-                      </p>
+                      {item.kind === "dataset" && renamingId === item.id ? (
+                        <input
+                          autoFocus
+                          value={renameDraft}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === "Enter") {
+                              renameDataset(item.id, renameDraft);
+                              setRenamingId(null);
+                            } else if (e.key === "Escape") {
+                              setRenamingId(null);
+                            }
+                          }}
+                          onBlur={() => {
+                            renameDataset(item.id, renameDraft);
+                            setRenamingId(null);
+                          }}
+                          className="w-full h-7 px-1.5 text-sm rounded bg-background/70 border border-foreground/40 focus:outline-none"
+                        />
+                      ) : (
+                        <p className="text-sm truncate flex items-center gap-1.5">
+                          <span className="truncate">{item.label}</span>
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground truncate">
                         <span className="uppercase tracking-wider mr-1">
                           {item.kind === "group" ? "intersection" : "dataset"}
@@ -515,6 +538,33 @@ const Index = () => {
                         · {item.sub}
                       </p>
                     </div>
+                    {item.kind === "dataset" && renamingId !== item.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const ds = datasets.find((d) => d.id === item.id);
+                          setRenameDraft(ds?.name ?? "");
+                          setRenamingId(item.id);
+                        }}
+                        className="text-muted-foreground hover:text-foreground p-1"
+                        title="Rename dataset"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {item.kind === "dataset" && renamingId === item.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          renameDataset(item.id, renameDraft);
+                          setRenamingId(null);
+                        }}
+                        className="text-muted-foreground hover:text-foreground p-1"
+                        title="Save name"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     {item.kind === "dataset" && (
                       <button
                         onClick={(e) => {
