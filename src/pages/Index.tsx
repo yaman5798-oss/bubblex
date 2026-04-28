@@ -689,9 +689,23 @@ const GroupPanel = ({
         </div>
       </div>
 
-      <Button onClick={() => downloadIntersectionXlsx(group, datasets)} className="w-full gap-2">
-        <Download className="h-4 w-4" /> Download intersection .xlsx
+      <Button
+        onClick={() => downloadIntersectionXlsx(group, datasets, exportColumnsArg)}
+        className="w-full gap-2"
+      >
+        <Download className="h-4 w-4" />
+        {totalSelected > 0
+          ? `Download .xlsx (${totalSelected} selected col${totalSelected === 1 ? "" : "s"})`
+          : "Download intersection .xlsx"}
       </Button>
+      {totalSelected > 0 && (
+        <button
+          onClick={() => setSelectionByDs({})}
+          className="text-[10px] text-muted-foreground hover:text-foreground underline -mt-2"
+        >
+          Clear column selection
+        </button>
+      )}
 
       <div className="flex gap-1 border-b border-[hsl(var(--panel-border))]">
         {(["shared", "matched", "unique"] as const).map((t) => (
