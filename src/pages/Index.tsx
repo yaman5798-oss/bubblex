@@ -214,6 +214,12 @@ const Index = () => {
     if (selected?.id === id) setSelected(null);
   };
 
+  const renameDataset = (id: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setDatasets((arr) => arr.map((d) => (d.id === id ? { ...d, name: trimmed } : d)));
+  };
+
   const clearAll = () => {
     clearIntersectionCache();
     setDatasets([]);
