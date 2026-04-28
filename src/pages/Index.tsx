@@ -755,18 +755,30 @@ const GroupPanel = ({
         </div>
       ) : tab === "matched" ? (
         <div className="space-y-3">
+          <p className="text-[10px] text-muted-foreground -mb-1">
+            Double-click a column header to include / exclude it from the export.
+          </p>
           {groupDatasets.map((ds) => {
             const anchor = group.anchorColumnByDataset[ds.id] ?? ds.headers[0];
             const rows = group.rowsByDataset[ds.id] ?? [];
+            const selected = selectionByDs[ds.id];
+            const selCount = selected?.size ?? 0;
             return (
               <div key={ds.id}>
-                <p className="text-xs font-semibold mb-1 flex items-center gap-2" style={{ color: `hsl(var(${ds.colorVar}))` }}>
+                <p className="text-xs font-semibold mb-1 flex items-center gap-2 flex-wrap" style={{ color: `hsl(var(${ds.colorVar}))` }}>
                   <span className="truncate">{ds.name}</span>
                   <span className="text-[10px] font-normal text-muted-foreground">
                     {rows.length} rows · anchor: <span className="font-mono">{anchor}</span>
+                    {selCount > 0 && <> · {selCount} col{selCount === 1 ? "" : "s"} selected</>}
                   </span>
                 </p>
-                <RowsPreview rows={rows} highlight={sharedSet} anchorColumn={anchor} />
+                <RowsPreview
+                  rows={rows}
+                  highlight={sharedSet}
+                  anchorColumn={anchor}
+                  selectedColumns={selected}
+                  onToggleColumn={(col) => toggleColumn(ds.id, col)}
+                />
               </div>
             );
           })}
