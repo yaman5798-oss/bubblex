@@ -343,7 +343,25 @@ export const downloadIntersectionXlsx = (
     const ds = datasets.find((d) => d.id === id);
     if (!ds) continue;
     const rows = group.rowsByDataset[id] ?? [];
-    const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ info: "no rows" }]);
+    const matched = group.matchedValueByDataset[id] ?? [];
+    const anchor = group.anchorColumnByDataset[id] ?? ds.headers[0] ?? "";
+
+    // Build a stable, anchor-first column order. Anchor column comes first,
+    // followed by the rest of the dataset's original headers in original order.
+    // Each row is augmented with `__match__` (the normalized matched value) so
+    // common values are easy to scan and align across sheets.
+    const orderedHeaders = [anchor, ...ds.headers.filter((h) => h !== anchor)];
+    const shaped = rows.length
+      ? rows.map((r, i) => {
+          const out: Record<string, unknown> = { __match__: matched[i] ?? "" };
+          for (const h of orderedHeaders) out[h] = r[h];
+          return out;
+        })
+      : [{ info: "no rows" }];
+
+    const sheet = XLSX.utils.json_to_sheet(shaped, {
+      header: rows.length ? ["__match__", ...orderedHeaders] : undefined,
+    });
     const safeName = ds.name.replace(/[\\/?*[\]:]/g, "_").slice(0, 28);
     XLSX.utils.book_append_sheet(wb, sheet, `${safeName}_match`);
 
@@ -351,7 +369,9 @@ export const downloadIntersectionXlsx = (
     const onlyRows = ds.rows.filter(
       (r) => !Object.values(r).some((v) => sharedSet.has(normalizeValue(v)))
     );
-    const onlySheet = XLSX.utils.json_to_sheet(onlyRows.length ? onlyRows : [{ info: "no unique rows" }]);
+    const onlySheet = XLSX.utils.json_to_sheet(
+      onlyRows.length ? onlyRows : [{ info: "no unique rows" }]
+    );
     XLSX.utils.book_append_sheet(wb, onlySheet, `${safeName}_only`);
   }
 
