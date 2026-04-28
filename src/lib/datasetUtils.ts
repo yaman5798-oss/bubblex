@@ -96,6 +96,13 @@ export interface IntersectionGroup {
   sharedValues: string[];
   /** Rows per dataset that contain a shared value. Materialized on demand. */
   rowsByDataset: Record<string, Record<string, unknown>[]>;
+  /**
+   * Per dataset: the column that holds the matched value most often.
+   * Rows in `rowsByDataset` are sorted by this column so common values line up.
+   */
+  anchorColumnByDataset: Record<string, string>;
+  /** Per dataset row → normalized matched value (same order as rowsByDataset). */
+  matchedValueByDataset: Record<string, string[]>;
   centerX: number;
   centerY: number;
   /** HSL hue assigned for this group's color */
@@ -248,17 +255,60 @@ export const materializeGroup = (
   const shared = sharedValuesFor(datasets, region.datasetIds);
   const sharedSet = new Set(shared);
   const rowsByDataset: Record<string, Record<string, unknown>[]> = {};
+  const anchorColumnByDataset: Record<string, string> = {};
+  const matchedValueByDataset: Record<string, string[]> = {};
+
   for (const id of region.datasetIds) {
     const ds = datasets.find((d) => d.id === id)!;
-    rowsByDataset[id] = ds.rows.filter((r) =>
-      Object.values(r).some((v) => sharedSet.has(normalizeValue(v)))
-    );
+    // For each row: find the FIRST column whose value matches a shared value.
+    // Tally column hits to choose the dataset's anchor column.
+    const colHits = new Map<string, number>();
+    type Hit = { row: Record<string, unknown>; col: string; matched: string };
+    const hits: Hit[] = [];
+    for (const row of ds.rows) {
+      let chosenCol: string | null = null;
+      let chosenMatch: string | null = null;
+      for (const col of ds.headers) {
+        const n = normalizeValue(row[col]);
+        if (n !== "" && sharedSet.has(n)) {
+          chosenCol = col;
+          chosenMatch = n;
+          break;
+        }
+      }
+      if (chosenCol && chosenMatch) {
+        colHits.set(chosenCol, (colHits.get(chosenCol) ?? 0) + 1);
+        hits.push({ row, col: chosenCol, matched: chosenMatch });
+      }
+    }
+    // Anchor column = the column most often containing the shared values.
+    let anchor = ds.headers[0] ?? "";
+    let max = -1;
+    for (const [col, n] of colHits) {
+      if (n > max) { max = n; anchor = col; }
+    }
+    anchorColumnByDataset[id] = anchor;
+
+    // Sort rows by anchor column value so common data lines up consistently.
+    hits.sort((a, b) => {
+      // Rows whose match IS in the anchor column come first, then by matched value.
+      const aAnchor = a.col === anchor ? 0 : 1;
+      const bAnchor = b.col === anchor ? 0 : 1;
+      if (aAnchor !== bAnchor) return aAnchor - bAnchor;
+      return a.matched.localeCompare(b.matched);
+    });
+
+    rowsByDataset[id] = hits.map((h) => h.row);
+    matchedValueByDataset[id] = hits.map((h) => h.matched);
   }
+
   return {
     id: region.id,
     datasetIds: region.datasetIds,
     sharedValues: shared,
     rowsByDataset,
+    anchorColumnByDataset,
+    matchedValueByDataset,
     centerX: region.centerX,
     centerY: region.centerY,
     hue: region.hue,
@@ -293,7 +343,25 @@ export const downloadIntersectionXlsx = (
     const ds = datasets.find((d) => d.id === id);
     if (!ds) continue;
     const rows = group.rowsByDataset[id] ?? [];
-    const sheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ info: "no rows" }]);
+    const matched = group.matchedValueByDataset[id] ?? [];
+    const anchor = group.anchorColumnByDataset[id] ?? ds.headers[0] ?? "";
+
+    // Build a stable, anchor-first column order. Anchor column comes first,
+    // followed by the rest of the dataset's original headers in original order.
+    // Each row is augmented with `__match__` (the normalized matched value) so
+    // common values are easy to scan and align across sheets.
+    const orderedHeaders = [anchor, ...ds.headers.filter((h) => h !== anchor)];
+    const shaped = rows.length
+      ? rows.map((r, i) => {
+          const out: Record<string, unknown> = { __match__: matched[i] ?? "" };
+          for (const h of orderedHeaders) out[h] = r[h];
+          return out;
+        })
+      : [{ info: "no rows" }];
+
+    const sheet = XLSX.utils.json_to_sheet(shaped, {
+      header: rows.length ? ["__match__", ...orderedHeaders] : undefined,
+    });
     const safeName = ds.name.replace(/[\\/?*[\]:]/g, "_").slice(0, 28);
     XLSX.utils.book_append_sheet(wb, sheet, `${safeName}_match`);
 
@@ -301,7 +369,9 @@ export const downloadIntersectionXlsx = (
     const onlyRows = ds.rows.filter(
       (r) => !Object.values(r).some((v) => sharedSet.has(normalizeValue(v)))
     );
-    const onlySheet = XLSX.utils.json_to_sheet(onlyRows.length ? onlyRows : [{ info: "no unique rows" }]);
+    const onlySheet = XLSX.utils.json_to_sheet(
+      onlyRows.length ? onlyRows : [{ info: "no unique rows" }]
+    );
     XLSX.utils.book_append_sheet(wb, onlySheet, `${safeName}_only`);
   }
 

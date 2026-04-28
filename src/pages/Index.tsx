@@ -27,7 +27,7 @@ const Index = () => {
   const dragOffset = useRef({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<{ type: "group" | "dataset"; id: string } | null>(null);
-  const [tab, setTab] = useState<"shared" | "unique">("shared");
+  const [tab, setTab] = useState<"shared" | "matched" | "unique">("shared");
   const fileInput = useRef<HTMLInputElement>(null);
   const [jumpQuery, setJumpQuery] = useState("");
   const [jumpIndex, setJumpIndex] = useState(0);
@@ -552,8 +552,8 @@ const GroupPanel = ({
 }: {
   group: IntersectionGroup;
   datasets: Dataset[];
-  tab: "shared" | "unique";
-  setTab: (t: "shared" | "unique") => void;
+  tab: "shared" | "matched" | "unique";
+  setTab: (t: "shared" | "matched" | "unique") => void;
 }) => {
   const [sharedQuery, setSharedQuery] = useState("");
   const groupDatasets = group.datasetIds
@@ -604,7 +604,7 @@ const GroupPanel = ({
       </Button>
 
       <div className="flex gap-1 border-b border-[hsl(var(--panel-border))]">
-        {(["shared", "unique"] as const).map((t) => (
+        {(["shared", "matched", "unique"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -612,7 +612,11 @@ const GroupPanel = ({
               tab === t ? "border-foreground text-foreground" : "border-transparent text-muted-foreground"
             }`}
           >
-            {t === "shared" ? `Shared (${group.sharedValues.length})` : `Unique`}
+            {t === "shared"
+              ? `Shared (${group.sharedValues.length})`
+              : t === "matched"
+              ? `Matched rows`
+              : `Unique`}
           </button>
         ))}
       </div>
@@ -645,6 +649,24 @@ const GroupPanel = ({
             )}
           </div>
         </div>
+      ) : tab === "matched" ? (
+        <div className="space-y-3">
+          {groupDatasets.map((ds) => {
+            const anchor = group.anchorColumnByDataset[ds.id] ?? ds.headers[0];
+            const rows = group.rowsByDataset[ds.id] ?? [];
+            return (
+              <div key={ds.id}>
+                <p className="text-xs font-semibold mb-1 flex items-center gap-2" style={{ color: `hsl(var(${ds.colorVar}))` }}>
+                  <span className="truncate">{ds.name}</span>
+                  <span className="text-[10px] font-normal text-muted-foreground">
+                    {rows.length} rows · anchor: <span className="font-mono">{anchor}</span>
+                  </span>
+                </p>
+                <RowsPreview rows={rows} highlight={sharedSet} anchorColumn={anchor} />
+              </div>
+            );
+          })}
+        </div>
       ) : (
         <div className="space-y-3">
           {uniqueByDs.map(({ ds, rows }) => (
@@ -676,12 +698,25 @@ const DatasetPanel = ({ dataset, sharedSet }: { dataset: Dataset; sharedSet: Set
   );
 };
 
-const RowsPreview = ({ rows, highlight }: { rows: Record<string, unknown>[]; highlight?: Set<string> }) => {
+const RowsPreview = ({
+  rows,
+  highlight,
+  anchorColumn,
+}: {
+  rows: Record<string, unknown>[];
+  highlight?: Set<string>;
+  /** When set, this column is pinned as the first column so common values stay aligned. */
+  anchorColumn?: string;
+}) => {
   const [query, setQuery] = useState("");
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
 
   if (rows.length === 0) return <p className="text-xs text-muted-foreground">No rows.</p>;
-  const headers = Object.keys(rows[0]);
+  const rawHeaders = Object.keys(rows[0]);
+  const headers =
+    anchorColumn && rawHeaders.includes(anchorColumn)
+      ? [anchorColumn, ...rawHeaders.filter((h) => h !== anchorColumn)]
+      : rawHeaders;
 
   const q = query.trim().toLowerCase();
   const activeColFilters = Object.entries(colFilters).filter(([, v]) => v.trim() !== "");
@@ -735,8 +770,16 @@ const RowsPreview = ({ rows, highlight }: { rows: Record<string, unknown>[]; hig
           <thead className="bg-white/5 sticky top-0 z-10">
             <tr>
               {headers.map((h) => (
-                <th key={h} className="text-left px-2 py-1 font-medium whitespace-nowrap">
+                <th
+                  key={h}
+                  className={`text-left px-2 py-1 font-medium whitespace-nowrap ${
+                    h === anchorColumn ? "text-foreground" : ""
+                  }`}
+                  style={h === anchorColumn ? { background: "hsl(var(--intersection) / 0.15)" } : undefined}
+                  title={h === anchorColumn ? "Anchor column (most common matches)" : undefined}
+                >
                   {h}
+                  {h === anchorColumn ? " ★" : ""}
                 </th>
               ))}
             </tr>
