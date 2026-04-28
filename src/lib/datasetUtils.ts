@@ -96,6 +96,13 @@ export interface IntersectionGroup {
   sharedValues: string[];
   /** Rows per dataset that contain a shared value. Materialized on demand. */
   rowsByDataset: Record<string, Record<string, unknown>[]>;
+  /**
+   * Per dataset: the column that holds the matched value most often.
+   * Rows in `rowsByDataset` are sorted by this column so common values line up.
+   */
+  anchorColumnByDataset: Record<string, string>;
+  /** Per dataset row → normalized matched value (same order as rowsByDataset). */
+  matchedValueByDataset: Record<string, string[]>;
   centerX: number;
   centerY: number;
   /** HSL hue assigned for this group's color */
