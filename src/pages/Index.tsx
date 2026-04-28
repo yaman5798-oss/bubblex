@@ -595,7 +595,11 @@ const Index = () => {
             )}
 
             {selectedDataset && !selectedGroup && (
-              <DatasetPanel dataset={selectedDataset} sharedSet={sharedSetForDataset(selectedDataset.id)} />
+              <DatasetPanel
+                dataset={selectedDataset}
+                sharedSet={sharedSetForDataset(selectedDataset.id)}
+                onRename={(name) => renameDataset(selectedDataset.id, name)}
+              />
             )}
           </div>
         </aside>
