@@ -770,8 +770,16 @@ const RowsPreview = ({
           <thead className="bg-white/5 sticky top-0 z-10">
             <tr>
               {headers.map((h) => (
-                <th key={h} className="text-left px-2 py-1 font-medium whitespace-nowrap">
+                <th
+                  key={h}
+                  className={`text-left px-2 py-1 font-medium whitespace-nowrap ${
+                    h === anchorColumn ? "text-foreground" : ""
+                  }`}
+                  style={h === anchorColumn ? { background: "hsl(var(--intersection) / 0.15)" } : undefined}
+                  title={h === anchorColumn ? "Anchor column (most common matches)" : undefined}
+                >
                   {h}
+                  {h === anchorColumn ? " ★" : ""}
                 </th>
               ))}
             </tr>
