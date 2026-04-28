@@ -747,12 +747,73 @@ const GroupPanel = ({
   );
 };
 
-const DatasetPanel = ({ dataset, sharedSet }: { dataset: Dataset; sharedSet: Set<string> }) => {
+const DatasetPanel = ({
+  dataset,
+  sharedSet,
+  onRename,
+}: {
+  dataset: Dataset;
+  sharedSet: Set<string>;
+  onRename: (name: string) => void;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(dataset.name);
+  // Keep draft in sync when switching dataset.
+  useEffect(() => {
+    setDraft(dataset.name);
+    setEditing(false);
+  }, [dataset.id, dataset.name]);
+
   return (
     <div className="p-4 space-y-3">
       <div>
         <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Dataset</p>
-        <p className="text-sm font-medium truncate">{dataset.name}</p>
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  onRename(draft);
+                  setEditing(false);
+                } else if (e.key === "Escape") {
+                  setDraft(dataset.name);
+                  setEditing(false);
+                }
+              }}
+              onBlur={() => {
+                onRename(draft);
+                setEditing(false);
+              }}
+              className="flex-1 h-7 px-1.5 text-sm rounded bg-background/70 border border-foreground/40 focus:outline-none"
+            />
+            <button
+              onClick={() => {
+                onRename(draft);
+                setEditing(false);
+              }}
+              className="text-muted-foreground hover:text-foreground p-1"
+              title="Save"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium truncate flex-1" title={dataset.name}>
+              {dataset.name}
+            </p>
+            <button
+              onClick={() => setEditing(true)}
+              className="text-muted-foreground hover:text-foreground p-1"
+              title="Rename dataset"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           {dataset.rows.length} rows · {dataset.headers.length} columns
         </p>
