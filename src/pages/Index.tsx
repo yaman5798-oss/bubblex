@@ -552,8 +552,8 @@ const GroupPanel = ({
 }: {
   group: IntersectionGroup;
   datasets: Dataset[];
-  tab: "shared" | "unique";
-  setTab: (t: "shared" | "unique") => void;
+  tab: "shared" | "matched" | "unique";
+  setTab: (t: "shared" | "matched" | "unique") => void;
 }) => {
   const [sharedQuery, setSharedQuery] = useState("");
   const groupDatasets = group.datasetIds
