@@ -954,19 +954,46 @@ const RowsPreview = ({
         <table className="text-xs w-full">
           <thead className="bg-white/5 sticky top-0 z-10">
             <tr>
-              {headers.map((h) => (
-                <th
-                  key={h}
-                  className={`text-left px-2 py-1 font-medium whitespace-nowrap ${
-                    h === anchorColumn ? "text-foreground" : ""
-                  }`}
-                  style={h === anchorColumn ? { background: "hsl(var(--intersection) / 0.15)" } : undefined}
-                  title={h === anchorColumn ? "Anchor column (most common matches)" : undefined}
-                >
-                  {h}
-                  {h === anchorColumn ? " ★" : ""}
-                </th>
-              ))}
+              {headers.map((h) => {
+                const isAnchor = h === anchorColumn;
+                const selectable = !!onToggleColumn;
+                const anySelected = (selectedColumns?.size ?? 0) > 0;
+                const isSelected = selectedColumns?.has(h) ?? false;
+                // Visual state: when nothing is selected → all columns are "in" (no dim).
+                // When some selected → unselected columns are dimmed.
+                const dimmed = selectable && anySelected && !isSelected;
+                return (
+                  <th
+                    key={h}
+                    onDoubleClick={selectable ? () => onToggleColumn!(h) : undefined}
+                    className={`text-left px-2 py-1 font-medium whitespace-nowrap select-none ${
+                      isAnchor ? "text-foreground" : ""
+                    } ${selectable ? "cursor-pointer" : ""} ${dimmed ? "opacity-40 line-through" : ""}`}
+                    style={
+                      isSelected
+                        ? { background: "hsl(var(--intersection) / 0.30)", boxShadow: "inset 0 -2px 0 hsl(var(--intersection))" }
+                        : isAnchor
+                        ? { background: "hsl(var(--intersection) / 0.15)" }
+                        : undefined
+                    }
+                    title={
+                      selectable
+                        ? isSelected
+                          ? "Selected for export — double-click to exclude"
+                          : anySelected
+                          ? "Excluded from export — double-click to include"
+                          : "Double-click to include only specific columns"
+                        : isAnchor
+                        ? "Anchor column (most common matches)"
+                        : undefined
+                    }
+                  >
+                    {h}
+                    {isAnchor ? " ★" : ""}
+                    {isSelected ? " ✓" : ""}
+                  </th>
+                );
+              })}
             </tr>
             <tr>
               {headers.map((h) => (
