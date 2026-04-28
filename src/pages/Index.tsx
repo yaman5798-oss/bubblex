@@ -32,6 +32,8 @@ const Index = () => {
   const [jumpQuery, setJumpQuery] = useState("");
   const [jumpIndex, setJumpIndex] = useState(0);
   const jumpInputRef = useRef<HTMLInputElement>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   const intersections = useMemo(() => computeIntersectionRegions(datasets), [datasets]);
 
