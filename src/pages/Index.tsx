@@ -698,12 +698,25 @@ const DatasetPanel = ({ dataset, sharedSet }: { dataset: Dataset; sharedSet: Set
   );
 };
 
-const RowsPreview = ({ rows, highlight }: { rows: Record<string, unknown>[]; highlight?: Set<string> }) => {
+const RowsPreview = ({
+  rows,
+  highlight,
+  anchorColumn,
+}: {
+  rows: Record<string, unknown>[];
+  highlight?: Set<string>;
+  /** When set, this column is pinned as the first column so common values stay aligned. */
+  anchorColumn?: string;
+}) => {
   const [query, setQuery] = useState("");
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
 
   if (rows.length === 0) return <p className="text-xs text-muted-foreground">No rows.</p>;
-  const headers = Object.keys(rows[0]);
+  const rawHeaders = Object.keys(rows[0]);
+  const headers =
+    anchorColumn && rawHeaders.includes(anchorColumn)
+      ? [anchorColumn, ...rawHeaders.filter((h) => h !== anchorColumn)]
+      : rawHeaders;
 
   const q = query.trim().toLowerCase();
   const activeColFilters = Object.entries(colFilters).filter(([, v]) => v.trim() !== "");
