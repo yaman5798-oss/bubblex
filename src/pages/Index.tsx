@@ -604,7 +604,7 @@ const GroupPanel = ({
       </Button>
 
       <div className="flex gap-1 border-b border-[hsl(var(--panel-border))]">
-        {(["shared", "unique"] as const).map((t) => (
+        {(["shared", "matched", "unique"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -612,7 +612,11 @@ const GroupPanel = ({
               tab === t ? "border-foreground text-foreground" : "border-transparent text-muted-foreground"
             }`}
           >
-            {t === "shared" ? `Shared (${group.sharedValues.length})` : `Unique`}
+            {t === "shared"
+              ? `Shared (${group.sharedValues.length})`
+              : t === "matched"
+              ? `Matched rows`
+              : `Unique`}
           </button>
         ))}
       </div>
@@ -644,6 +648,24 @@ const GroupPanel = ({
               <p className="text-xs text-muted-foreground py-2 text-center">No matching values.</p>
             )}
           </div>
+        </div>
+      ) : tab === "matched" ? (
+        <div className="space-y-3">
+          {groupDatasets.map((ds) => {
+            const anchor = group.anchorColumnByDataset[ds.id] ?? ds.headers[0];
+            const rows = group.rowsByDataset[ds.id] ?? [];
+            return (
+              <div key={ds.id}>
+                <p className="text-xs font-semibold mb-1 flex items-center gap-2" style={{ color: `hsl(var(${ds.colorVar}))` }}>
+                  <span className="truncate">{ds.name}</span>
+                  <span className="text-[10px] font-normal text-muted-foreground">
+                    {rows.length} rows · anchor: <span className="font-mono">{anchor}</span>
+                  </span>
+                </p>
+                <RowsPreview rows={rows} highlight={sharedSet} anchorColumn={anchor} />
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-3">
