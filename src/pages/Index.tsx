@@ -620,6 +620,23 @@ const GroupPanel = ({
   setTab: (t: "shared" | "matched" | "unique") => void;
 }) => {
   const [sharedQuery, setSharedQuery] = useState("");
+  // Per-dataset selected columns for export. Empty/undefined ⇒ export ALL columns.
+  // Toggled by double-clicking a header in the Matched rows view.
+  const [selectionByDs, setSelectionByDs] = useState<Record<string, Set<string>>>({});
+  // Reset selections when switching to a different intersection.
+  useEffect(() => {
+    setSelectionByDs({});
+  }, [group.id]);
+
+  const toggleColumn = (dsId: string, col: string) => {
+    setSelectionByDs((s) => {
+      const cur = new Set(s[dsId] ?? []);
+      if (cur.has(col)) cur.delete(col);
+      else cur.add(col);
+      return { ...s, [dsId]: cur };
+    });
+  };
+
   const groupDatasets = group.datasetIds
     .map((id) => datasets.find((d) => d.id === id))
     .filter((d): d is Dataset => !!d);
@@ -634,6 +651,15 @@ const GroupPanel = ({
   const filteredShared = sq
     ? group.sharedValues.filter((v) => v.toLowerCase().includes(sq))
     : group.sharedValues;
+
+  const totalSelected = Object.values(selectionByDs).reduce((n, s) => n + s.size, 0);
+  const exportColumnsArg = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(selectionByDs)) {
+      if (v.size > 0) out[k] = Array.from(v);
+    }
+    return out;
+  }, [selectionByDs]);
 
   return (
     <div className="p-4 space-y-4">
