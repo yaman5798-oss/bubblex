@@ -382,13 +382,7 @@ export const downloadIntersectionXlsx = (
   for (const id of group.datasetIds) {
     const ds = datasets.find((d) => d.id === id);
     if (!ds || !ds.sourceSheet) continue;
-    const baseName = `${safe(ds.name, 22)}_source`;
-    let name = baseName.slice(0, 31);
-    let i = 2;
-    while (wb.SheetNames.includes(name)) {
-      const suffix = `_${i++}`;
-      name = (baseName.slice(0, 31 - suffix.length) + suffix);
-    }
+    const name = uniqueName(`${safe(ds.name, 22)}_source`);
     // Clone the worksheet so we don't mutate the in-memory dataset.
     const cloned: XLSX.WorkSheet = JSON.parse(JSON.stringify(ds.sourceSheet));
     XLSX.utils.book_append_sheet(wb, cloned, name);
