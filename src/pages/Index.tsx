@@ -879,11 +879,19 @@ const RowsPreview = ({
   rows,
   highlight,
   anchorColumn,
+  selectedColumns,
+  onToggleColumn,
 }: {
   rows: Record<string, unknown>[];
   highlight?: Set<string>;
   /** When set, this column is pinned as the first column so common values stay aligned. */
   anchorColumn?: string;
+  /**
+   * If provided, double-clicking a header toggles inclusion in this set.
+   * An empty / undefined set is treated as "all columns" by the export.
+   */
+  selectedColumns?: Set<string>;
+  onToggleColumn?: (col: string) => void;
 }) => {
   const [query, setQuery] = useState("");
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
