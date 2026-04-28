@@ -349,13 +349,31 @@ export const clearIntersectionCache = (removedId?: string) => {
 
 export const downloadIntersectionXlsx = (
   group: IntersectionGroup,
-  datasets: Dataset[]
+  datasets: Dataset[],
+  /**
+   * Optional per-dataset column whitelist. If provided for a dataset id,
+   * the `_match` sheet for that dataset only exports those columns
+   * (anchor column is always kept first if it is included).
+   */
+  selectedColumnsByDataset?: Record<string, string[]>
 ) => {
   const wb = XLSX.utils.book_new();
 
   // Helper: sanitize sheet names (Excel forbids \ / ? * [ ] :, max 31 chars).
   const safe = (n: string, max = 28) =>
     n.replace(/\.[^.]+$/, "").replace(/[\\/?*[\]:]/g, "_").slice(0, max);
+
+  // Ensure unique sheet name (Excel forbids duplicates).
+  const uniqueName = (desired: string) => {
+    let name = desired.slice(0, 31);
+    if (!wb.SheetNames.includes(name)) return name;
+    let i = 2;
+    while (true) {
+      const suffix = `_${i++}`;
+      const candidate = desired.slice(0, 31 - suffix.length) + suffix;
+      if (!wb.SheetNames.includes(candidate)) return candidate;
+    }
+  };
 
   // 1) Embed each dataset's ORIGINAL sheet first so formatting is preserved
   //    AND so the shared-values sheet can hyperlink into it. Track the sheet
