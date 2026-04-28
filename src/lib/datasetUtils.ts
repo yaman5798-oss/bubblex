@@ -349,13 +349,31 @@ export const clearIntersectionCache = (removedId?: string) => {
 
 export const downloadIntersectionXlsx = (
   group: IntersectionGroup,
-  datasets: Dataset[]
+  datasets: Dataset[],
+  /**
+   * Optional per-dataset column whitelist. If provided for a dataset id,
+   * the `_match` sheet for that dataset only exports those columns
+   * (anchor column is always kept first if it is included).
+   */
+  selectedColumnsByDataset?: Record<string, string[]>
 ) => {
   const wb = XLSX.utils.book_new();
 
   // Helper: sanitize sheet names (Excel forbids \ / ? * [ ] :, max 31 chars).
   const safe = (n: string, max = 28) =>
     n.replace(/\.[^.]+$/, "").replace(/[\\/?*[\]:]/g, "_").slice(0, max);
+
+  // Ensure unique sheet name (Excel forbids duplicates).
+  const uniqueName = (desired: string) => {
+    let name = desired.slice(0, 31);
+    if (!wb.SheetNames.includes(name)) return name;
+    let i = 2;
+    while (true) {
+      const suffix = `_${i++}`;
+      const candidate = desired.slice(0, 31 - suffix.length) + suffix;
+      if (!wb.SheetNames.includes(candidate)) return candidate;
+    }
+  };
 
   // 1) Embed each dataset's ORIGINAL sheet first so formatting is preserved
   //    AND so the shared-values sheet can hyperlink into it. Track the sheet
@@ -364,13 +382,7 @@ export const downloadIntersectionXlsx = (
   for (const id of group.datasetIds) {
     const ds = datasets.find((d) => d.id === id);
     if (!ds || !ds.sourceSheet) continue;
-    const baseName = `${safe(ds.name, 22)}_source`;
-    let name = baseName.slice(0, 31);
-    let i = 2;
-    while (wb.SheetNames.includes(name)) {
-      const suffix = `_${i++}`;
-      name = (baseName.slice(0, 31 - suffix.length) + suffix);
-    }
+    const name = uniqueName(`${safe(ds.name, 22)}_source`);
     // Clone the worksheet so we don't mutate the in-memory dataset.
     const cloned: XLSX.WorkSheet = JSON.parse(JSON.stringify(ds.sourceSheet));
     XLSX.utils.book_append_sheet(wb, cloned, name);
@@ -449,7 +461,7 @@ export const downloadIntersectionXlsx = (
   }
   // Column widths for readability.
   sharedSheet["!cols"] = [{ wch: 28 }, ...group.datasetIds.map(() => ({ wch: 18 }))];
-  XLSX.utils.book_append_sheet(wb, sharedSheet, "Shared Values");
+  XLSX.utils.book_append_sheet(wb, sharedSheet, uniqueName("Shared Values"));
 
   // 3) Per-dataset organized sheets (anchor column first, plus __match__).
   for (const id of group.datasetIds) {
@@ -459,7 +471,16 @@ export const downloadIntersectionXlsx = (
     const matched = group.matchedValueByDataset[id] ?? [];
     const anchor = group.anchorColumnByDataset[id] ?? ds.headers[0] ?? "";
 
-    const orderedHeaders = [anchor, ...ds.headers.filter((h) => h !== anchor)];
+    // Apply per-dataset column whitelist if provided. Empty/missing → all columns.
+    const sel = selectedColumnsByDataset?.[id];
+    const allowed =
+      sel && sel.length > 0 ? new Set(sel) : new Set(ds.headers);
+    // Always keep anchor first if it's allowed; otherwise just use the allowed set order.
+    const filteredHeaders = ds.headers.filter((h) => allowed.has(h));
+    const orderedHeaders = allowed.has(anchor)
+      ? [anchor, ...filteredHeaders.filter((h) => h !== anchor)]
+      : filteredHeaders;
+
     const shaped = rows.length
       ? rows.map((r, i) => {
           const out: Record<string, unknown> = { __match__: matched[i] ?? "" };
@@ -471,7 +492,7 @@ export const downloadIntersectionXlsx = (
     const sheet = XLSX.utils.json_to_sheet(shaped, {
       header: rows.length ? ["__match__", ...orderedHeaders] : undefined,
     });
-    XLSX.utils.book_append_sheet(wb, sheet, `${safe(ds.name)}_match`);
+    XLSX.utils.book_append_sheet(wb, sheet, uniqueName(`${safe(ds.name)}_match`));
 
     const sharedSet = new Set(group.sharedValues);
     const onlyRows = ds.rows.filter(
@@ -480,7 +501,7 @@ export const downloadIntersectionXlsx = (
     const onlySheet = XLSX.utils.json_to_sheet(
       onlyRows.length ? onlyRows : [{ info: "no unique rows" }]
     );
-    XLSX.utils.book_append_sheet(wb, onlySheet, `${safe(ds.name)}_only`);
+    XLSX.utils.book_append_sheet(wb, onlySheet, uniqueName(`${safe(ds.name)}_only`));
   }
 
   const names = group.datasetIds

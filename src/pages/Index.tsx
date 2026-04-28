@@ -620,6 +620,23 @@ const GroupPanel = ({
   setTab: (t: "shared" | "matched" | "unique") => void;
 }) => {
   const [sharedQuery, setSharedQuery] = useState("");
+  // Per-dataset selected columns for export. Empty/undefined ⇒ export ALL columns.
+  // Toggled by double-clicking a header in the Matched rows view.
+  const [selectionByDs, setSelectionByDs] = useState<Record<string, Set<string>>>({});
+  // Reset selections when switching to a different intersection.
+  useEffect(() => {
+    setSelectionByDs({});
+  }, [group.id]);
+
+  const toggleColumn = (dsId: string, col: string) => {
+    setSelectionByDs((s) => {
+      const cur = new Set(s[dsId] ?? []);
+      if (cur.has(col)) cur.delete(col);
+      else cur.add(col);
+      return { ...s, [dsId]: cur };
+    });
+  };
+
   const groupDatasets = group.datasetIds
     .map((id) => datasets.find((d) => d.id === id))
     .filter((d): d is Dataset => !!d);
@@ -634,6 +651,15 @@ const GroupPanel = ({
   const filteredShared = sq
     ? group.sharedValues.filter((v) => v.toLowerCase().includes(sq))
     : group.sharedValues;
+
+  const totalSelected = Object.values(selectionByDs).reduce((n, s) => n + s.size, 0);
+  const exportColumnsArg = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(selectionByDs)) {
+      if (v.size > 0) out[k] = Array.from(v);
+    }
+    return out;
+  }, [selectionByDs]);
 
   return (
     <div className="p-4 space-y-4">
@@ -663,9 +689,23 @@ const GroupPanel = ({
         </div>
       </div>
 
-      <Button onClick={() => downloadIntersectionXlsx(group, datasets)} className="w-full gap-2">
-        <Download className="h-4 w-4" /> Download intersection .xlsx
+      <Button
+        onClick={() => downloadIntersectionXlsx(group, datasets, exportColumnsArg)}
+        className="w-full gap-2"
+      >
+        <Download className="h-4 w-4" />
+        {totalSelected > 0
+          ? `Download .xlsx (${totalSelected} selected col${totalSelected === 1 ? "" : "s"})`
+          : "Download intersection .xlsx"}
       </Button>
+      {totalSelected > 0 && (
+        <button
+          onClick={() => setSelectionByDs({})}
+          className="text-[10px] text-muted-foreground hover:text-foreground underline -mt-2"
+        >
+          Clear column selection
+        </button>
+      )}
 
       <div className="flex gap-1 border-b border-[hsl(var(--panel-border))]">
         {(["shared", "matched", "unique"] as const).map((t) => (
@@ -715,18 +755,30 @@ const GroupPanel = ({
         </div>
       ) : tab === "matched" ? (
         <div className="space-y-3">
+          <p className="text-[10px] text-muted-foreground -mb-1">
+            Double-click a column header to include / exclude it from the export.
+          </p>
           {groupDatasets.map((ds) => {
             const anchor = group.anchorColumnByDataset[ds.id] ?? ds.headers[0];
             const rows = group.rowsByDataset[ds.id] ?? [];
+            const selected = selectionByDs[ds.id];
+            const selCount = selected?.size ?? 0;
             return (
               <div key={ds.id}>
-                <p className="text-xs font-semibold mb-1 flex items-center gap-2" style={{ color: `hsl(var(${ds.colorVar}))` }}>
+                <p className="text-xs font-semibold mb-1 flex items-center gap-2 flex-wrap" style={{ color: `hsl(var(${ds.colorVar}))` }}>
                   <span className="truncate">{ds.name}</span>
                   <span className="text-[10px] font-normal text-muted-foreground">
                     {rows.length} rows · anchor: <span className="font-mono">{anchor}</span>
+                    {selCount > 0 && <> · {selCount} col{selCount === 1 ? "" : "s"} selected</>}
                   </span>
                 </p>
-                <RowsPreview rows={rows} highlight={sharedSet} anchorColumn={anchor} />
+                <RowsPreview
+                  rows={rows}
+                  highlight={sharedSet}
+                  anchorColumn={anchor}
+                  selectedColumns={selected}
+                  onToggleColumn={(col) => toggleColumn(ds.id, col)}
+                />
               </div>
             );
           })}
@@ -827,11 +879,19 @@ const RowsPreview = ({
   rows,
   highlight,
   anchorColumn,
+  selectedColumns,
+  onToggleColumn,
 }: {
   rows: Record<string, unknown>[];
   highlight?: Set<string>;
   /** When set, this column is pinned as the first column so common values stay aligned. */
   anchorColumn?: string;
+  /**
+   * If provided, double-clicking a header toggles inclusion in this set.
+   * An empty / undefined set is treated as "all columns" by the export.
+   */
+  selectedColumns?: Set<string>;
+  onToggleColumn?: (col: string) => void;
 }) => {
   const [query, setQuery] = useState("");
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
@@ -894,19 +954,46 @@ const RowsPreview = ({
         <table className="text-xs w-full">
           <thead className="bg-white/5 sticky top-0 z-10">
             <tr>
-              {headers.map((h) => (
-                <th
-                  key={h}
-                  className={`text-left px-2 py-1 font-medium whitespace-nowrap ${
-                    h === anchorColumn ? "text-foreground" : ""
-                  }`}
-                  style={h === anchorColumn ? { background: "hsl(var(--intersection) / 0.15)" } : undefined}
-                  title={h === anchorColumn ? "Anchor column (most common matches)" : undefined}
-                >
-                  {h}
-                  {h === anchorColumn ? " ★" : ""}
-                </th>
-              ))}
+              {headers.map((h) => {
+                const isAnchor = h === anchorColumn;
+                const selectable = !!onToggleColumn;
+                const anySelected = (selectedColumns?.size ?? 0) > 0;
+                const isSelected = selectedColumns?.has(h) ?? false;
+                // Visual state: when nothing is selected → all columns are "in" (no dim).
+                // When some selected → unselected columns are dimmed.
+                const dimmed = selectable && anySelected && !isSelected;
+                return (
+                  <th
+                    key={h}
+                    onDoubleClick={selectable ? () => onToggleColumn!(h) : undefined}
+                    className={`text-left px-2 py-1 font-medium whitespace-nowrap select-none ${
+                      isAnchor ? "text-foreground" : ""
+                    } ${selectable ? "cursor-pointer" : ""} ${dimmed ? "opacity-40 line-through" : ""}`}
+                    style={
+                      isSelected
+                        ? { background: "hsl(var(--intersection) / 0.30)", boxShadow: "inset 0 -2px 0 hsl(var(--intersection))" }
+                        : isAnchor
+                        ? { background: "hsl(var(--intersection) / 0.15)" }
+                        : undefined
+                    }
+                    title={
+                      selectable
+                        ? isSelected
+                          ? "Selected for export — double-click to exclude"
+                          : anySelected
+                          ? "Excluded from export — double-click to include"
+                          : "Double-click to include only specific columns"
+                        : isAnchor
+                        ? "Anchor column (most common matches)"
+                        : undefined
+                    }
+                  >
+                    {h}
+                    {isAnchor ? " ★" : ""}
+                    {isSelected ? " ✓" : ""}
+                  </th>
+                );
+              })}
             </tr>
             <tr>
               {headers.map((h) => (
