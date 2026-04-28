@@ -11,6 +11,14 @@ export interface Dataset {
   /** Size multiplier for the oval (1 = default). Adjust via mouse wheel. */
   scale: number;
   colorVar: string; // e.g. "--dataset-1"
+  /**
+   * Original parsed worksheet (preserves cell formatting, number formats,
+   * merges, column widths). Re-embedded into exports so users keep the look
+   * of their source file. Optional for backwards compatibility.
+   */
+  sourceSheet?: XLSX.WorkSheet;
+  /** Original sheet name from the source workbook. */
+  sourceSheetName?: string;
 }
 
 export const DATASET_COLORS = [
