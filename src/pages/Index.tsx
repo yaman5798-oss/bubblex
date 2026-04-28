@@ -112,7 +112,7 @@ const Index = () => {
     for (let i = 0; i < arr.length; i++) {
       const f = arr[i];
       try {
-        const { rows, headers } = await parseFile(f);
+        const { rows, headers, sourceSheet, sourceSheetName } = await parseFile(f);
         const id = crypto.randomUUID();
         const colorVar = DATASET_COLORS[(datasets.length + i) % DATASET_COLORS.length];
         const cw = canvasRef.current?.clientWidth ?? 1000;
@@ -127,6 +127,8 @@ const Index = () => {
           y: ch / 2 + (((datasets.length + i) % 2) - 0.5) * 120,
           scale: 1,
           colorVar,
+          sourceSheet,
+          sourceSheetName,
         });
       } catch (e) {
         toast.error(`Failed to parse ${f.name}`);
