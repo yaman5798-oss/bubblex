@@ -204,25 +204,36 @@ const Index = () => {
       const rect = el.getBoundingClientRect();
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
-      // Find topmost oval under cursor (last in array = drawn on top).
+      // Hit-test in WORLD coords since datasets live in world space.
+      const wp = { x: (px - viewPan.x) / viewZoom, y: (py - viewPan.y) / viewZoom };
       let hit: string | null = null;
       for (let i = datasets.length - 1; i >= 0; i--) {
         const d = datasets[i];
-        if (pointInEllipse(px, py, d.x, d.y, d.scale ?? 1)) {
+        if (pointInEllipse(wp.x, wp.y, d.x, d.y, d.scale ?? 1)) {
           hit = d.id;
           break;
         }
       }
-      if (!hit) return;
-      const hitDs = datasets.find((d) => d.id === hit);
-      if (hitDs?.locked) return;
+      if (hit) {
+        const hitDs = datasets.find((d) => d.id === hit);
+        if (hitDs?.locked) return;
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        setDatasets((arr) =>
+          arr.map((d) =>
+            d.id === hit ? { ...d, scale: Math.min(3, Math.max(0.3, d.scale * factor)) } : d
+          )
+        );
+        return;
+      }
+      // Blank space → zoom the whole canvas around cursor (same wheel mechanic).
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-      setDatasets((arr) =>
-        arr.map((d) =>
-          d.id === hit ? { ...d, scale: Math.min(3, Math.max(0.3, d.scale * factor)) } : d
-        )
-      );
+      const nextZoom = Math.min(4, Math.max(0.2, viewZoom * factor));
+      const k = nextZoom / viewZoom;
+      // Keep cursor's world point fixed: newPan = p - k*(p - pan)
+      setViewPan({ x: px - k * (px - viewPan.x), y: py - k * (py - viewPan.y) });
+      setViewZoom(nextZoom);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
