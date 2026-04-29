@@ -345,8 +345,19 @@ const Index = () => {
             </div>
           )}
 
+          {/* Zoomable viewport — wheel on blank space pans/zooms world. */}
+          <div
+            className="absolute inset-0"
+            style={{
+              transform: `translate(${viewPan.x}px, ${viewPan.y}px) scale(${viewZoom})`,
+              transformOrigin: "0 0",
+            }}
+          >
           {/* Ellipses */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none">
+          <svg
+            className="absolute pointer-events-none"
+            style={{ left: 0, top: 0, width: 100000, height: 100000, overflow: "visible" }}
+          >
             <defs>
               {datasets.map((d) => (
                 <radialGradient key={d.id} id={`grad-${d.id}`} cx="50%" cy="50%" r="50%">
