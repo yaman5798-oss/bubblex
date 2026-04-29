@@ -19,6 +19,8 @@ export interface Dataset {
   sourceSheet?: XLSX.WorkSheet;
   /** Original sheet name from the source workbook. */
   sourceSheetName?: string;
+  /** When true, the circle cannot be dragged or resized via wheel. */
+  locked?: boolean;
 }
 
 export const DATASET_COLORS = [
