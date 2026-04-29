@@ -505,6 +505,18 @@ const Index = () => {
               </button>
             );
           })}
+          </div>
+
+          {/* Zoom indicator / reset */}
+          {(viewZoom !== 1 || viewPan.x !== 0 || viewPan.y !== 0) && (
+            <button
+              onClick={() => { setViewZoom(1); setViewPan({ x: 0, y: 0 }); }}
+              className="absolute bottom-3 left-3 z-10 px-2.5 py-1 rounded-md text-xs font-medium bg-[hsl(var(--panel))]/90 border border-[hsl(var(--panel-border))] backdrop-blur hover:bg-[hsl(var(--panel))]"
+              title="Reset zoom"
+            >
+              {Math.round(viewZoom * 100)}% · reset
+            </button>
+          )}
         </main>
 
         {/* Side panel */}
