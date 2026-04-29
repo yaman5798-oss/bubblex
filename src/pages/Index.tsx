@@ -34,6 +34,9 @@ const Index = () => {
   const jumpInputRef = useRef<HTMLInputElement>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [jumpExpanded, setJumpExpanded] = useState(true);
+  const [jumpHeight, setJumpHeight] = useState(288); // px, default ~max-h-72
+  const jumpResizing = useRef(false);
 
   const intersections = useMemo(() => computeIntersectionRegions(datasets), [datasets]);
 
