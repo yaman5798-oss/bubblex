@@ -146,6 +146,7 @@ const Index = () => {
     e.preventDefault();
     const ds = datasets.find((d) => d.id === id);
     if (!ds || !canvasRef.current) return;
+    if (ds.locked) return;
     const rect = canvasRef.current.getBoundingClientRect();
     dragOffset.current = { x: e.clientX - rect.left - ds.x, y: e.clientY - rect.top - ds.y };
     setDragId(id);
