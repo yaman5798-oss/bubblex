@@ -17,7 +17,7 @@ import {
   sharedValuesFor,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check } from "lucide-react";
+import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lock, Unlock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
@@ -146,6 +146,7 @@ const Index = () => {
     e.preventDefault();
     const ds = datasets.find((d) => d.id === id);
     if (!ds || !canvasRef.current) return;
+    if (ds.locked) return;
     const rect = canvasRef.current.getBoundingClientRect();
     dragOffset.current = { x: e.clientX - rect.left - ds.x, y: e.clientY - rect.top - ds.y };
     setDragId(id);
@@ -198,6 +199,8 @@ const Index = () => {
         }
       }
       if (!hit) return;
+      const hitDs = datasets.find((d) => d.id === hit);
+      if (hitDs?.locked) return;
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
       setDatasets((arr) =>
@@ -219,7 +222,10 @@ const Index = () => {
   const renameDataset = (id: string, newName: string) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    setDatasets((arr) => arr.map((d) => (d.id === id ? { ...d, name: trimmed } : d)));
+  };
+
+  const toggleLock = (id: string) => {
+    setDatasets((arr) => arr.map((d) => (d.id === id ? { ...d, locked: !d.locked } : d)));
   };
 
   const clearAll = () => {
@@ -363,7 +369,7 @@ const Index = () => {
               <g
                 key={d.id}
                 transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG}) scale(${d.scale})`}
-                style={{ pointerEvents: "auto", cursor: dragId === d.id ? "grabbing" : "grab" }}
+                style={{ pointerEvents: "auto", cursor: d.locked ? "not-allowed" : (dragId === d.id ? "grabbing" : "grab") }}
                 onPointerDown={(e) => onPointerDown(e, d.id)}
                 
                 onClick={(e) => {
@@ -377,6 +383,7 @@ const Index = () => {
                   fill={`url(#grad-${d.id})`}
                   stroke={`hsl(var(${d.colorVar}))`}
                   strokeWidth={(selectedDataset?.id === d.id ? 3 : 2) / d.scale}
+                  strokeDasharray={d.locked ? `${6 / d.scale} ${4 / d.scale}` : undefined}
                 />
                 <text
                   x={0}
@@ -399,6 +406,29 @@ const Index = () => {
                 >
                   {d.rows.length} rows · {d.values.size} unique values
                 </text>
+                {/* Lock toggle button — pinned to top-right inside the circle */}
+                <g
+                  transform={`translate(${ELLIPSE_RX * 0.62} ${-ELLIPSE_RY * 0.62}) scale(${1 / d.scale})`}
+                  style={{ cursor: "pointer" }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleLock(d.id);
+                  }}
+                >
+                  <title>{d.locked ? "Unlock circle" : "Lock circle in place"}</title>
+                  <circle
+                    r={14}
+                    fill={d.locked ? `hsl(var(${d.colorVar}))` : "hsl(var(--background))"}
+                    stroke={`hsl(var(${d.colorVar}))`}
+                    strokeWidth={1.5}
+                  />
+                  <foreignObject x={-9} y={-9} width={18} height={18} style={{ pointerEvents: "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, color: d.locked ? "hsl(var(--background))" : `hsl(var(${d.colorVar}))` }}>
+                      {d.locked ? <Lock size={12} /> : <Unlock size={12} />}
+                    </div>
+                  </foreignObject>
+                </g>
               </g>
             ))}
           </svg>
