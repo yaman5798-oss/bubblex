@@ -476,7 +476,36 @@ const Index = () => {
         </main>
 
         {/* Side panel */}
-        <aside className="w-[380px] border-l border-[hsl(var(--panel-border))] bg-[hsl(var(--panel))] flex flex-col min-h-0">
+        {/* Vertical drag handle to resize the side panel */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            asideResizing.current = true;
+            const startX = e.clientX;
+            const startW = asideWidth;
+            const onMove = (ev: PointerEvent) => {
+              if (!asideResizing.current) return;
+              // Dragging left increases width, right decreases.
+              const next = Math.min(900, Math.max(260, startW - (ev.clientX - startX)));
+              setAsideWidth(next);
+            };
+            const onUp = () => {
+              asideResizing.current = false;
+              window.removeEventListener("pointermove", onMove);
+              window.removeEventListener("pointerup", onUp);
+            };
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onUp);
+          }}
+          className="w-1.5 cursor-col-resize hover:bg-white/10 shrink-0"
+          title="Drag to resize panel"
+        />
+        <aside
+          style={{ width: asideWidth }}
+          className="border-l border-[hsl(var(--panel-border))] bg-[hsl(var(--panel))] flex flex-col min-h-0 shrink-0"
+        >
           <div className="px-4 py-3 border-b border-[hsl(var(--panel-border))] space-y-2">
             <div className="flex items-center justify-between">
               <button
