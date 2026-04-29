@@ -161,7 +161,8 @@ const Index = () => {
     if (!ds || !canvasRef.current) return;
     if (ds.locked) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    dragOffset.current = { x: e.clientX - rect.left - ds.x, y: e.clientY - rect.top - ds.y };
+    const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+    dragOffset.current = { x: w.x - ds.x, y: w.y - ds.y };
     setDragId(id);
     (e.target as Element).setPointerCapture(e.pointerId);
   };
@@ -172,9 +173,10 @@ const Index = () => {
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragId || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
+    const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
     pendingPos.current = {
-      x: e.clientX - rect.left - dragOffset.current.x,
-      y: e.clientY - rect.top - dragOffset.current.y,
+      x: w.x - dragOffset.current.x,
+      y: w.y - dragOffset.current.y,
     };
     if (rafRef.current != null) return;
     rafRef.current = requestAnimationFrame(() => {
