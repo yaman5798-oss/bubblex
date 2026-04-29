@@ -39,6 +39,14 @@ const Index = () => {
   const jumpResizing = useRef(false);
   const [asideWidth, setAsideWidth] = useState(380); // px, side panel width
   const asideResizing = useRef(false);
+  // Canvas viewport — wheel on blank space zooms around cursor.
+  const [viewZoom, setViewZoom] = useState(1);
+  const [viewPan, setViewPan] = useState({ x: 0, y: 0 });
+  // Convert screen (canvas-relative) coords → world coords used by datasets.
+  const screenToWorld = useCallback(
+    (sx: number, sy: number) => ({ x: (sx - viewPan.x) / viewZoom, y: (sy - viewPan.y) / viewZoom }),
+    [viewPan.x, viewPan.y, viewZoom]
+  );
 
   const intersections = useMemo(() => computeIntersectionRegions(datasets), [datasets]);
 
@@ -153,7 +161,8 @@ const Index = () => {
     if (!ds || !canvasRef.current) return;
     if (ds.locked) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    dragOffset.current = { x: e.clientX - rect.left - ds.x, y: e.clientY - rect.top - ds.y };
+    const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+    dragOffset.current = { x: w.x - ds.x, y: w.y - ds.y };
     setDragId(id);
     (e.target as Element).setPointerCapture(e.pointerId);
   };
@@ -164,9 +173,10 @@ const Index = () => {
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragId || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
+    const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
     pendingPos.current = {
-      x: e.clientX - rect.left - dragOffset.current.x,
-      y: e.clientY - rect.top - dragOffset.current.y,
+      x: w.x - dragOffset.current.x,
+      y: w.y - dragOffset.current.y,
     };
     if (rafRef.current != null) return;
     rafRef.current = requestAnimationFrame(() => {
@@ -194,29 +204,40 @@ const Index = () => {
       const rect = el.getBoundingClientRect();
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
-      // Find topmost oval under cursor (last in array = drawn on top).
+      // Hit-test in WORLD coords since datasets live in world space.
+      const wp = { x: (px - viewPan.x) / viewZoom, y: (py - viewPan.y) / viewZoom };
       let hit: string | null = null;
       for (let i = datasets.length - 1; i >= 0; i--) {
         const d = datasets[i];
-        if (pointInEllipse(px, py, d.x, d.y, d.scale ?? 1)) {
+        if (pointInEllipse(wp.x, wp.y, d.x, d.y, d.scale ?? 1)) {
           hit = d.id;
           break;
         }
       }
-      if (!hit) return;
-      const hitDs = datasets.find((d) => d.id === hit);
-      if (hitDs?.locked) return;
+      if (hit) {
+        const hitDs = datasets.find((d) => d.id === hit);
+        if (hitDs?.locked) return;
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        setDatasets((arr) =>
+          arr.map((d) =>
+            d.id === hit ? { ...d, scale: Math.min(3, Math.max(0.3, d.scale * factor)) } : d
+          )
+        );
+        return;
+      }
+      // Blank space → zoom the whole canvas around cursor (same wheel mechanic).
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-      setDatasets((arr) =>
-        arr.map((d) =>
-          d.id === hit ? { ...d, scale: Math.min(3, Math.max(0.3, d.scale * factor)) } : d
-        )
-      );
+      const nextZoom = Math.min(4, Math.max(0.2, viewZoom * factor));
+      const k = nextZoom / viewZoom;
+      // Keep cursor's world point fixed: newPan = p - k*(p - pan)
+      setViewPan({ x: px - k * (px - viewPan.x), y: py - k * (py - viewPan.y) });
+      setViewZoom(nextZoom);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [datasets]);
+  }, [datasets, viewZoom, viewPan.x, viewPan.y]);
 
   const removeDataset = (id: string) => {
     clearIntersectionCache(id);
@@ -324,8 +345,19 @@ const Index = () => {
             </div>
           )}
 
+          {/* Zoomable viewport — wheel on blank space pans/zooms world. */}
+          <div
+            className="absolute inset-0"
+            style={{
+              transform: `translate(${viewPan.x}px, ${viewPan.y}px) scale(${viewZoom})`,
+              transformOrigin: "0 0",
+            }}
+          >
           {/* Ellipses */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none">
+          <svg
+            className="absolute pointer-events-none"
+            style={{ left: 0, top: 0, width: 100000, height: 100000, overflow: "visible" }}
+          >
             <defs>
               {datasets.map((d) => (
                 <radialGradient key={d.id} id={`grad-${d.id}`} cx="50%" cy="50%" r="50%">
@@ -473,6 +505,18 @@ const Index = () => {
               </button>
             );
           })}
+          </div>
+
+          {/* Zoom indicator / reset */}
+          {(viewZoom !== 1 || viewPan.x !== 0 || viewPan.y !== 0) && (
+            <button
+              onClick={() => { setViewZoom(1); setViewPan({ x: 0, y: 0 }); }}
+              className="absolute bottom-3 left-3 z-10 px-2.5 py-1 rounded-md text-xs font-medium bg-[hsl(var(--panel))]/90 border border-[hsl(var(--panel-border))] backdrop-blur hover:bg-[hsl(var(--panel))]"
+              title="Reset zoom"
+            >
+              {Math.round(viewZoom * 100)}% · reset
+            </button>
+          )}
         </main>
 
         {/* Side panel */}
