@@ -222,7 +222,10 @@ const Index = () => {
   const renameDataset = (id: string, newName: string) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    setDatasets((arr) => arr.map((d) => (d.id === id ? { ...d, name: trimmed } : d)));
+  };
+
+  const toggleLock = (id: string) => {
+    setDatasets((arr) => arr.map((d) => (d.id === id ? { ...d, locked: !d.locked } : d)));
   };
 
   const clearAll = () => {
