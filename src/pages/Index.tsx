@@ -17,7 +17,7 @@ import {
   sharedValuesFor,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lock, Unlock } from "lucide-react";
+import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lock, Unlock, ChevronDown, ChevronRight, GripHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
@@ -34,6 +34,9 @@ const Index = () => {
   const jumpInputRef = useRef<HTMLInputElement>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [jumpExpanded, setJumpExpanded] = useState(true);
+  const [jumpHeight, setJumpHeight] = useState(288); // px, default ~max-h-72
+  const jumpResizing = useRef(false);
 
   const intersections = useMemo(() => computeIntersectionRegions(datasets), [datasets]);
 
@@ -474,37 +477,54 @@ const Index = () => {
         <aside className="w-[380px] border-l border-[hsl(var(--panel-border))] bg-[hsl(var(--panel))] flex flex-col min-h-0">
           <div className="px-4 py-3 border-b border-[hsl(var(--panel-border))] space-y-2">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              <button
+                onClick={() => setJumpExpanded((v) => !v)}
+                className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                aria-expanded={jumpExpanded}
+              >
+                {jumpExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                 Jump to
-              </h2>
+                <span className="ml-1 text-[10px] normal-case tracking-normal text-muted-foreground/70">
+                  ({jumpItems.length})
+                </span>
+              </button>
               <kbd className="text-[10px] px-1.5 py-0.5 rounded border border-[hsl(var(--panel-border))] text-muted-foreground">
                 ⌘K
               </kbd>
             </div>
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                ref={jumpInputRef}
-                value={jumpQuery}
-                onChange={(e) => setJumpQuery(e.target.value)}
-                onKeyDown={onJumpKeyDown}
-                placeholder="Search datasets or intersections…"
-                className="h-8 pl-7 pr-7 text-xs bg-background/50"
-              />
-              {jumpQuery && (
-                <button
-                  onClick={() => setJumpQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              ↑ ↓ navigate · Enter select · Esc clear
-            </p>
+            {jumpExpanded && (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    ref={jumpInputRef}
+                    value={jumpQuery}
+                    onChange={(e) => setJumpQuery(e.target.value)}
+                    onKeyDown={onJumpKeyDown}
+                    placeholder="Search datasets or intersections…"
+                    className="h-8 pl-7 pr-7 text-xs bg-background/50"
+                  />
+                  {jumpQuery && (
+                    <button
+                      onClick={() => setJumpQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  ↑ ↓ navigate · Enter select · Esc clear
+                </p>
+              </>
+            )}
           </div>
-          <div className="overflow-y-auto max-h-72 border-b border-[hsl(var(--panel-border))]">
+          {jumpExpanded && (
+          <>
+          <div
+            className="overflow-y-auto border-b border-[hsl(var(--panel-border))]"
+            style={{ height: jumpHeight }}
+          >
             {datasets.length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">No files yet.</p>
             ) : jumpItems.length === 0 ? (
@@ -612,6 +632,35 @@ const Index = () => {
               })
             )}
           </div>
+          {/* Drag handle to resize the Jump-to list */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              jumpResizing.current = true;
+              const startY = e.clientY;
+              const startH = jumpHeight;
+              const onMove = (ev: PointerEvent) => {
+                if (!jumpResizing.current) return;
+                const next = Math.min(800, Math.max(80, startH + (ev.clientY - startY)));
+                setJumpHeight(next);
+              };
+              const onUp = () => {
+                jumpResizing.current = false;
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+              };
+              window.addEventListener("pointermove", onMove);
+              window.addEventListener("pointerup", onUp);
+            }}
+            className="h-2 cursor-row-resize flex items-center justify-center border-b border-[hsl(var(--panel-border))] hover:bg-white/5"
+            title="Drag to resize"
+          >
+            <GripHorizontal className="h-3 w-3 text-muted-foreground/60" />
+          </div>
+          </>
+          )}
 
           <div className="flex-1 overflow-y-auto min-h-0">
             {!selected && (
