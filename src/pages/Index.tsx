@@ -369,7 +369,7 @@ const Index = () => {
               <g
                 key={d.id}
                 transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG}) scale(${d.scale})`}
-                style={{ pointerEvents: "auto", cursor: dragId === d.id ? "grabbing" : "grab" }}
+                style={{ pointerEvents: "auto", cursor: d.locked ? "not-allowed" : (dragId === d.id ? "grabbing" : "grab") }}
                 onPointerDown={(e) => onPointerDown(e, d.id)}
                 
                 onClick={(e) => {
@@ -383,6 +383,7 @@ const Index = () => {
                   fill={`url(#grad-${d.id})`}
                   stroke={`hsl(var(${d.colorVar}))`}
                   strokeWidth={(selectedDataset?.id === d.id ? 3 : 2) / d.scale}
+                  strokeDasharray={d.locked ? `${6 / d.scale} ${4 / d.scale}` : undefined}
                 />
                 <text
                   x={0}
@@ -405,6 +406,29 @@ const Index = () => {
                 >
                   {d.rows.length} rows · {d.values.size} unique values
                 </text>
+                {/* Lock toggle button — pinned to top-right inside the circle */}
+                <g
+                  transform={`translate(${ELLIPSE_RX * 0.62} ${-ELLIPSE_RY * 0.62}) scale(${1 / d.scale})`}
+                  style={{ cursor: "pointer" }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleLock(d.id);
+                  }}
+                >
+                  <title>{d.locked ? "Unlock circle" : "Lock circle in place"}</title>
+                  <circle
+                    r={14}
+                    fill={d.locked ? `hsl(var(${d.colorVar}))` : "hsl(var(--background))"}
+                    stroke={`hsl(var(${d.colorVar}))`}
+                    strokeWidth={1.5}
+                  />
+                  <foreignObject x={-9} y={-9} width={18} height={18} style={{ pointerEvents: "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, color: d.locked ? "hsl(var(--background))" : `hsl(var(${d.colorVar}))` }}>
+                      {d.locked ? <Lock size={12} /> : <Unlock size={12} />}
+                    </div>
+                  </foreignObject>
+                </g>
               </g>
             ))}
           </svg>
