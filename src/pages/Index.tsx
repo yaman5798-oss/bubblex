@@ -37,6 +37,8 @@ const Index = () => {
   const [jumpExpanded, setJumpExpanded] = useState(true);
   const [jumpHeight, setJumpHeight] = useState(288); // px, default ~max-h-72
   const jumpResizing = useRef(false);
+  const [asideWidth, setAsideWidth] = useState(380); // px, side panel width
+  const asideResizing = useRef(false);
 
   const intersections = useMemo(() => computeIntersectionRegions(datasets), [datasets]);
 
