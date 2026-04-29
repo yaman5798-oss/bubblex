@@ -199,6 +199,8 @@ const Index = () => {
         }
       }
       if (!hit) return;
+      const hitDs = datasets.find((d) => d.id === hit);
+      if (hitDs?.locked) return;
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
       setDatasets((arr) =>
