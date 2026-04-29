@@ -39,6 +39,14 @@ const Index = () => {
   const jumpResizing = useRef(false);
   const [asideWidth, setAsideWidth] = useState(380); // px, side panel width
   const asideResizing = useRef(false);
+  // Canvas viewport — wheel on blank space zooms around cursor.
+  const [viewZoom, setViewZoom] = useState(1);
+  const [viewPan, setViewPan] = useState({ x: 0, y: 0 });
+  // Convert screen (canvas-relative) coords → world coords used by datasets.
+  const screenToWorld = useCallback(
+    (sx: number, sy: number) => ({ x: (sx - viewPan.x) / viewZoom, y: (sy - viewPan.y) / viewZoom }),
+    [viewPan.x, viewPan.y, viewZoom]
+  );
 
   const intersections = useMemo(() => computeIntersectionRegions(datasets), [datasets]);
 
