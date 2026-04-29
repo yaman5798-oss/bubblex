@@ -632,6 +632,35 @@ const Index = () => {
               })
             )}
           </div>
+          {/* Drag handle to resize the Jump-to list */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              jumpResizing.current = true;
+              const startY = e.clientY;
+              const startH = jumpHeight;
+              const onMove = (ev: PointerEvent) => {
+                if (!jumpResizing.current) return;
+                const next = Math.min(800, Math.max(80, startH + (ev.clientY - startY)));
+                setJumpHeight(next);
+              };
+              const onUp = () => {
+                jumpResizing.current = false;
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+              };
+              window.addEventListener("pointermove", onMove);
+              window.addEventListener("pointerup", onUp);
+            }}
+            className="h-2 cursor-row-resize flex items-center justify-center border-b border-[hsl(var(--panel-border))] hover:bg-white/5"
+            title="Drag to resize"
+          >
+            <GripHorizontal className="h-3 w-3 text-muted-foreground/60" />
+          </div>
+          </>
+          )}
 
           <div className="flex-1 overflow-y-auto min-h-0">
             {!selected && (
