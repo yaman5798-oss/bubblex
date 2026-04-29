@@ -65,9 +65,9 @@ export const parseFile = async (
 };
 
 // Geometry: tilted ellipses (45 deg). Use rotated-frame coordinates for hit-test.
-export const ELLIPSE_RX = 220; // along tilted axis
-export const ELLIPSE_RY = 130; // perpendicular
-export const ELLIPSE_ROT_DEG = -25;
+export const ELLIPSE_RX = 170; // circle radius
+export const ELLIPSE_RY = 170; // circle radius
+export const ELLIPSE_ROT_DEG = 0;
 
 const rotatePoint = (px: number, py: number, cx: number, cy: number, deg: number) => {
   const rad = (deg * Math.PI) / 180;
