@@ -237,7 +237,7 @@ const Index = () => {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [datasets]);
+  }, [datasets, viewZoom, viewPan.x, viewPan.y]);
 
   const removeDataset = (id: string) => {
     clearIntersectionCache(id);
