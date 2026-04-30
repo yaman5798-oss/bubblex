@@ -170,7 +170,30 @@ const Index = () => {
   const rafRef = useRef<number | null>(null);
   const pendingPos = useRef<{ x: number; y: number } | null>(null);
 
+  // Pan state — click-and-drag empty canvas to translate the viewport.
+  const panState = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+
+  const onCanvasPointerDown = (e: React.PointerEvent) => {
+    // Only start pan when click is on the canvas itself (empty space).
+    if (e.target !== canvasRef.current) return;
+    if (e.button !== 0) return;
+    panState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      panX: viewPan.x,
+      panY: viewPan.y,
+    };
+    setIsPanning(true);
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+
   const onPointerMove = (e: React.PointerEvent) => {
+    if (panState.current) {
+      const ps = panState.current;
+      setViewPan({ x: ps.panX + (e.clientX - ps.startX), y: ps.panY + (e.clientY - ps.startY) });
+      return;
+    }
     if (!dragId || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
@@ -193,6 +216,10 @@ const Index = () => {
       rafRef.current = null;
     }
     setDragId(null);
+    if (panState.current) {
+      panState.current = null;
+      setIsPanning(false);
+    }
   };
 
   // Mouse-wheel resize: scroll over an oval to grow/shrink it.
