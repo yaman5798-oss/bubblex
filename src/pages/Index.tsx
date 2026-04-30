@@ -492,7 +492,7 @@ const Index = () => {
                       ? `${10 / d.scale} ${6 / d.scale}`
                       : (d.locked ? `${6 / d.scale} ${4 / d.scale}` : undefined)
                   }
-                />},
+                />
                 <text
                   x={0}
                   y={-ELLIPSE_RY + 24}
