@@ -176,8 +176,8 @@ const Index = () => {
   const [overCanvas, setOverCanvas] = useState(false);
 
   const onCanvasPointerDown = (e: React.PointerEvent) => {
-    // Only start pan when click is on the canvas itself (empty space).
-    if (e.target !== canvasRef.current) return;
+    // Start pan only when click is on empty canvas (not a dataset/chip).
+    if ((e.target as Element).closest('[data-canvas-item]')) return;
     if (e.button !== 0) return;
     panState.current = {
       startX: e.clientX,
