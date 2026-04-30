@@ -554,7 +554,21 @@ const Index = () => {
                 transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG}) scale(${d.scale})`}
                 style={{ pointerEvents: "auto", cursor: d.locked ? "not-allowed" : (dragId === d.id ? "grabbing" : "grab") }}
                 onPointerDown={(e) => onPointerDown(e, d.id)}
-                
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // If this dataset is part of a multi-selection, target the whole group.
+                  // Otherwise target just this single dataset.
+                  const inMulti = multiSelected.has(d.id) && multiSelected.size > 1;
+                  const ids = inMulti ? Array.from(multiSelected) : [d.id];
+                  const isMerged = !inMulti && !!d.mergedFrom && d.mergedFrom.length > 0;
+                  setCtxMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    ids,
+                    kind: inMulti ? "multi" : (isMerged ? "merged" : "single"),
+                  });
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (e.ctrlKey || e.metaKey) {
