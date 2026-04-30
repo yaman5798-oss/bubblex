@@ -21,6 +21,9 @@ export interface Dataset {
   sourceSheetName?: string;
   /** When true, the circle cannot be dragged or resized via wheel. */
   locked?: boolean;
+  /** If this dataset was created by merging others, snapshots of the originals
+   *  so the user can "Separate" it back into individual bubbles. */
+  mergedFrom?: Dataset[];
 }
 
 export const DATASET_COLORS = [

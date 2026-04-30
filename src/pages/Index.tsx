@@ -159,6 +159,91 @@ const Index = () => {
   const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
   // Per-dataset offsets used while dragging the multi-selection together.
   const groupOffsets = useRef<Map<string, { dx: number; dy: number }>>(new Map());
+  // Right-click context menu for merge/delete/separate.
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    ids: string[];
+    kind: "multi" | "single" | "merged";
+  } | null>(null);
+
+  const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onDown = () => closeCtxMenu();
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeCtxMenu(); };
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu, closeCtxMenu]);
+
+  const mergeSelected = (ids: string[]) => {
+    if (ids.length < 2) return;
+    const items = ids
+      .map((id) => datasets.find((d) => d.id === id))
+      .filter((d): d is Dataset => !!d);
+    if (items.length < 2) return;
+    const cx = items.reduce((s, d) => s + d.x, 0) / items.length;
+    const cy = items.reduce((s, d) => s + d.y, 0) / items.length;
+    const scale = Math.min(3, Math.max(0.3, items.reduce((s, d) => s + (d.scale ?? 1), 0) / items.length));
+    const headers = Array.from(new Set(items.flatMap((d) => d.headers)));
+    const rows = items.flatMap((d) => d.rows);
+    const values = new Set<string>();
+    items.forEach((d) => d.values.forEach((v) => values.add(v)));
+    const snapshots: Dataset[] = items.map((d) => ({ ...d, mergedFrom: undefined }));
+    const merged: Dataset = {
+      id: crypto.randomUUID(),
+      name: items.map((d) => d.name.replace(/\.[^.]+$/, "")).join(" + "),
+      rows,
+      headers,
+      values,
+      x: cx,
+      y: cy,
+      scale,
+      colorVar: items[0].colorVar,
+      mergedFrom: snapshots,
+    };
+    const removeIds = new Set(ids);
+    ids.forEach((id) => clearIntersectionCache(id));
+    setDatasets((arr) => [...arr.filter((d) => !removeIds.has(d.id)), merged]);
+    setMultiSelected(new Set());
+    setSelected({ type: "dataset", id: merged.id });
+    toast.success(`Merged ${items.length} datasets`);
+  };
+
+  const deleteMany = (ids: string[]) => {
+    if (ids.length === 0) return;
+    const removeIds = new Set(ids);
+    ids.forEach((id) => clearIntersectionCache(id));
+    setDatasets((arr) => arr.filter((d) => !removeIds.has(d.id)));
+    setMultiSelected(new Set());
+    if (selected && removeIds.has(selected.id)) setSelected(null);
+    toast.success(`Deleted ${ids.length} dataset(s)`);
+  };
+
+  const separateMerged = (id: string) => {
+    const ds = datasets.find((d) => d.id === id);
+    if (!ds || !ds.mergedFrom || ds.mergedFrom.length === 0) return;
+    const originals = ds.mergedFrom;
+    const restored: Dataset[] = originals.map((o, i) => {
+      const angle = (i / originals.length) * Math.PI * 2;
+      const r = Math.max(ELLIPSE_RX, ELLIPSE_RY) * (ds.scale ?? 1) * 1.1;
+      return {
+        ...o,
+        id: crypto.randomUUID(),
+        x: ds.x + Math.cos(angle) * r,
+        y: ds.y + Math.sin(angle) * r,
+      };
+    });
+    clearIntersectionCache(id);
+    setDatasets((arr) => [...arr.filter((d) => d.id !== id), ...restored]);
+    setSelected(null);
+    setMultiSelected(new Set());
+    toast.success(`Separated into ${restored.length} datasets`);
+  };
 
   const onPointerDown = (e: React.PointerEvent, id: string) => {
     e.preventDefault();
@@ -383,6 +468,13 @@ const Index = () => {
           }}
           onPointerDown={onCanvasPointerDown}
           onPointerMove={onPointerMove}
+          onContextMenu={(e) => {
+            // Suppress browser menu on empty canvas; dataset handler will preventDefault for hits.
+            if (!(e.target as Element).closest('[data-canvas-item]')) {
+              e.preventDefault();
+              setCtxMenu(null);
+            }
+          }}
           onPointerOver={(e) => {
             const t = e.target as Element;
             setOverCanvas(!t.closest('[data-canvas-item]'));
@@ -469,7 +561,21 @@ const Index = () => {
                 transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG}) scale(${d.scale})`}
                 style={{ pointerEvents: "auto", cursor: d.locked ? "not-allowed" : (dragId === d.id ? "grabbing" : "grab") }}
                 onPointerDown={(e) => onPointerDown(e, d.id)}
-                
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // If this dataset is part of a multi-selection, target the whole group.
+                  // Otherwise target just this single dataset.
+                  const inMulti = multiSelected.has(d.id) && multiSelected.size > 1;
+                  const ids = inMulti ? Array.from(multiSelected) : [d.id];
+                  const isMerged = !inMulti && !!d.mergedFrom && d.mergedFrom.length > 0;
+                  setCtxMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    ids,
+                    kind: inMulti ? "multi" : (isMerged ? "merged" : "single"),
+                  });
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (e.ctrlKey || e.metaKey) {
@@ -593,6 +699,38 @@ const Index = () => {
             </button>
           )}
         </main>
+
+        {/* Right-click context menu (rendered at root level via fixed positioning) */}
+        {ctxMenu && (
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="fixed z-50 min-w-[180px] rounded-md border border-[hsl(var(--panel-border))] bg-[hsl(var(--panel))] shadow-xl py-1 text-sm"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          >
+            {ctxMenu.kind === "multi" && (
+              <button
+                onClick={() => { mergeSelected(ctxMenu.ids); closeCtxMenu(); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-white/10"
+              >
+                Merge ({ctxMenu.ids.length})
+              </button>
+            )}
+            {ctxMenu.kind === "merged" && (
+              <button
+                onClick={() => { separateMerged(ctxMenu.ids[0]); closeCtxMenu(); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-white/10"
+              >
+                Separate
+              </button>
+            )}
+            <button
+              onClick={() => { deleteMany(ctxMenu.ids); closeCtxMenu(); }}
+              className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-destructive"
+            >
+              Delete{ctxMenu.ids.length > 1 ? ` (${ctxMenu.ids.length})` : ""}
+            </button>
+          </div>
+        )}
 
         {/* Side panel */}
         {/* Vertical drag handle to resize the side panel */}
