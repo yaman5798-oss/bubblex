@@ -176,8 +176,8 @@ const Index = () => {
   const [overCanvas, setOverCanvas] = useState(false);
 
   const onCanvasPointerDown = (e: React.PointerEvent) => {
-    // Only start pan when click is on the canvas itself (empty space).
-    if (e.target !== canvasRef.current) return;
+    // Start pan only when click is on empty canvas (not a dataset/chip).
+    if ((e.target as Element).closest('[data-canvas-item]')) return;
     if (e.button !== 0) return;
     panState.current = {
       startX: e.clientX,
@@ -360,11 +360,14 @@ const Index = () => {
           }}
           onPointerDown={onCanvasPointerDown}
           onPointerMove={onPointerMove}
-          onPointerOver={(e) => setOverCanvas(e.target === canvasRef.current)}
+          onPointerOver={(e) => {
+            const t = e.target as Element;
+            setOverCanvas(!t.closest('[data-canvas-item]'));
+          }}
           onPointerUp={endDrag}
           onPointerLeave={() => { setOverCanvas(false); endDrag(); }}
           onClick={(e) => {
-            if (e.target === canvasRef.current && !isPanning) setSelected(null);
+            if (!(e.target as Element).closest('[data-canvas-item]') && !isPanning) setSelected(null);
           }}
         >
           {datasets.length === 0 && (
@@ -436,6 +439,7 @@ const Index = () => {
             {datasets.map((d) => (
               <g
                 key={d.id}
+                data-canvas-item="dataset"
                 transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG}) scale(${d.scale})`}
                 style={{ pointerEvents: "auto", cursor: d.locked ? "not-allowed" : (dragId === d.id ? "grabbing" : "grab") }}
                 onPointerDown={(e) => onPointerDown(e, d.id)}
@@ -509,6 +513,7 @@ const Index = () => {
             return (
               <button
                 key={g.id}
+                data-canvas-item="chip"
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelected({ type: "group", id: g.id });
