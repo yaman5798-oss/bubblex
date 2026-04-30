@@ -360,7 +360,10 @@ const Index = () => {
           }}
           onPointerDown={onCanvasPointerDown}
           onPointerMove={onPointerMove}
-          onPointerOver={(e) => setOverCanvas(e.target === canvasRef.current)}
+          onPointerOver={(e) => {
+            const t = e.target as Element;
+            setOverCanvas(!t.closest('[data-canvas-item]'));
+          }}
           onPointerUp={endDrag}
           onPointerLeave={() => { setOverCanvas(false); endDrag(); }}
           onClick={(e) => {
