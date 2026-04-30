@@ -468,6 +468,13 @@ const Index = () => {
           }}
           onPointerDown={onCanvasPointerDown}
           onPointerMove={onPointerMove}
+          onContextMenu={(e) => {
+            // Suppress browser menu on empty canvas; dataset handler will preventDefault for hits.
+            if (!(e.target as Element).closest('[data-canvas-item]')) {
+              e.preventDefault();
+              setCtxMenu(null);
+            }
+          }}
           onPointerOver={(e) => {
             const t = e.target as Element;
             setOverCanvas(!t.closest('[data-canvas-item]'));
