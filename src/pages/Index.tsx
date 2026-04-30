@@ -486,9 +486,13 @@ const Index = () => {
                   ry={ELLIPSE_RY}
                   fill={`url(#grad-${d.id})`}
                   stroke={`hsl(var(${d.colorVar}))`}
-                  strokeWidth={(selectedDataset?.id === d.id ? 3 : 2) / d.scale}
-                  strokeDasharray={d.locked ? `${6 / d.scale} ${4 / d.scale}` : undefined}
-                />
+                  strokeWidth={((selectedDataset?.id === d.id || multiSelected.has(d.id)) ? 4 : 2) / d.scale}
+                  strokeDasharray={
+                    multiSelected.has(d.id)
+                      ? `${10 / d.scale} ${6 / d.scale}`
+                      : (d.locked ? `${6 / d.scale} ${4 / d.scale}` : undefined)
+                  }
+                />},
                 <text
                   x={0}
                   y={-ELLIPSE_RY + 24}
