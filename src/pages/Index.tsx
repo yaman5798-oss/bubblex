@@ -155,6 +155,11 @@ const Index = () => {
     }
   };
 
+  // Multi-selection of datasets for group movement (Ctrl/Cmd+click to toggle).
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  // Per-dataset offsets used while dragging the multi-selection together.
+  const groupOffsets = useRef<Map<string, { dx: number; dy: number }>>(new Map());
+
   const onPointerDown = (e: React.PointerEvent, id: string) => {
     e.preventDefault();
     const ds = datasets.find((d) => d.id === id);
@@ -163,6 +168,16 @@ const Index = () => {
     const rect = canvasRef.current.getBoundingClientRect();
     const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
     dragOffset.current = { x: w.x - ds.x, y: w.y - ds.y };
+    // If this circle belongs to the multi-selection, capture offsets of all
+    // selected (unlocked) circles relative to the primary so they move together.
+    groupOffsets.current.clear();
+    if (multiSelected.has(id) && multiSelected.size > 1) {
+      for (const sid of multiSelected) {
+        const sd = datasets.find((x) => x.id === sid);
+        if (!sd || sd.locked || sid === id) continue;
+        groupOffsets.current.set(sid, { dx: sd.x - ds.x, dy: sd.y - ds.y });
+      }
+    }
     setDragId(id);
     (e.target as Element).setPointerCapture(e.pointerId);
   };
@@ -207,7 +222,15 @@ const Index = () => {
       rafRef.current = null;
       const p = pendingPos.current;
       if (!p || !dragId) return;
-      setDatasets((arr) => arr.map((d) => (d.id === dragId ? { ...d, x: p.x, y: p.y } : d)));
+      const offs = groupOffsets.current;
+      setDatasets((arr) =>
+        arr.map((d) => {
+          if (d.id === dragId) return { ...d, x: p.x, y: p.y };
+          const o = offs.get(d.id);
+          if (o) return { ...d, x: p.x + o.dx, y: p.y + o.dy };
+          return d;
+        })
+      );
     });
   };
 
@@ -367,7 +390,10 @@ const Index = () => {
           onPointerUp={endDrag}
           onPointerLeave={() => { setOverCanvas(false); endDrag(); }}
           onClick={(e) => {
-            if (!(e.target as Element).closest('[data-canvas-item]') && !isPanning) setSelected(null);
+            if (!(e.target as Element).closest('[data-canvas-item]') && !isPanning) {
+              setSelected(null);
+              setMultiSelected(new Set());
+            }
           }}
         >
           {datasets.length === 0 && (
@@ -446,6 +472,15 @@ const Index = () => {
                 
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setMultiSelected((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(d.id)) next.delete(d.id);
+                      else next.add(d.id);
+                      return next;
+                    });
+                    return;
+                  }
                   setSelected({ type: "dataset", id: d.id });
                 }}
               >
@@ -454,8 +489,12 @@ const Index = () => {
                   ry={ELLIPSE_RY}
                   fill={`url(#grad-${d.id})`}
                   stroke={`hsl(var(${d.colorVar}))`}
-                  strokeWidth={(selectedDataset?.id === d.id ? 3 : 2) / d.scale}
-                  strokeDasharray={d.locked ? `${6 / d.scale} ${4 / d.scale}` : undefined}
+                  strokeWidth={((selectedDataset?.id === d.id || multiSelected.has(d.id)) ? 4 : 2) / d.scale}
+                  strokeDasharray={
+                    multiSelected.has(d.id)
+                      ? `${10 / d.scale} ${6 / d.scale}`
+                      : (d.locked ? `${6 / d.scale} ${4 / d.scale}` : undefined)
+                  }
                 />
                 <text
                   x={0}
