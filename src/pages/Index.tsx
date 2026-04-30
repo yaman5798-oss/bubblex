@@ -510,6 +510,7 @@ const Index = () => {
             return (
               <button
                 key={g.id}
+                data-canvas-item="chip"
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelected({ type: "group", id: g.id });
