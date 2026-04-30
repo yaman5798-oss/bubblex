@@ -367,7 +367,7 @@ const Index = () => {
           onPointerUp={endDrag}
           onPointerLeave={() => { setOverCanvas(false); endDrag(); }}
           onClick={(e) => {
-            if (e.target === canvasRef.current && !isPanning) setSelected(null);
+            if (!(e.target as Element).closest('[data-canvas-item]') && !isPanning) setSelected(null);
           }}
         >
           {datasets.length === 0 && (
