@@ -173,6 +173,7 @@ const Index = () => {
   // Pan state — click-and-drag empty canvas to translate the viewport.
   const panState = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
+  const [overCanvas, setOverCanvas] = useState(false);
 
   const onCanvasPointerDown = (e: React.PointerEvent) => {
     // Only start pan when click is on the canvas itself (empty space).
@@ -355,12 +356,13 @@ const Index = () => {
             backgroundImage:
               "linear-gradient(hsl(var(--canvas-grid)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--canvas-grid)) 1px, transparent 1px)",
             backgroundSize: "40px 40px",
-            cursor: isPanning ? "grabbing" : "grab",
+            cursor: isPanning ? "grabbing" : (overCanvas ? "grab" : "default"),
           }}
           onPointerDown={onCanvasPointerDown}
           onPointerMove={onPointerMove}
+          onPointerOver={(e) => setOverCanvas(e.target === canvasRef.current)}
           onPointerUp={endDrag}
-          onPointerLeave={endDrag}
+          onPointerLeave={() => { setOverCanvas(false); endDrag(); }}
           onClick={(e) => {
             if (e.target === canvasRef.current && !isPanning) setSelected(null);
           }}
