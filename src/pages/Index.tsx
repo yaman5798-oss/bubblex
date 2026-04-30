@@ -700,6 +700,38 @@ const Index = () => {
           )}
         </main>
 
+        {/* Right-click context menu (rendered at root level via fixed positioning) */}
+        {ctxMenu && (
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="fixed z-50 min-w-[180px] rounded-md border border-[hsl(var(--panel-border))] bg-[hsl(var(--panel))] shadow-xl py-1 text-sm"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          >
+            {ctxMenu.kind === "multi" && (
+              <button
+                onClick={() => { mergeSelected(ctxMenu.ids); closeCtxMenu(); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-white/10"
+              >
+                Merge ({ctxMenu.ids.length})
+              </button>
+            )}
+            {ctxMenu.kind === "merged" && (
+              <button
+                onClick={() => { separateMerged(ctxMenu.ids[0]); closeCtxMenu(); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-white/10"
+              >
+                Separate
+              </button>
+            )}
+            <button
+              onClick={() => { deleteMany(ctxMenu.ids); closeCtxMenu(); }}
+              className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-destructive"
+            >
+              Delete{ctxMenu.ids.length > 1 ? ` (${ctxMenu.ids.length})` : ""}
+            </button>
+          </div>
+        )}
+
         {/* Side panel */}
         {/* Vertical drag handle to resize the side panel */}
         <div
