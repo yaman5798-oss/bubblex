@@ -222,7 +222,15 @@ const Index = () => {
       rafRef.current = null;
       const p = pendingPos.current;
       if (!p || !dragId) return;
-      setDatasets((arr) => arr.map((d) => (d.id === dragId ? { ...d, x: p.x, y: p.y } : d)));
+      const offs = groupOffsets.current;
+      setDatasets((arr) =>
+        arr.map((d) => {
+          if (d.id === dragId) return { ...d, x: p.x, y: p.y };
+          const o = offs.get(d.id);
+          if (o) return { ...d, x: p.x + o.dx, y: p.y + o.dy };
+          return d;
+        })
+      );
     });
   };
 
