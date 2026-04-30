@@ -436,6 +436,7 @@ const Index = () => {
             {datasets.map((d) => (
               <g
                 key={d.id}
+                data-canvas-item="dataset"
                 transform={`translate(${d.x} ${d.y}) rotate(${ELLIPSE_ROT_DEG}) scale(${d.scale})`}
                 style={{ pointerEvents: "auto", cursor: d.locked ? "not-allowed" : (dragId === d.id ? "grabbing" : "grab") }}
                 onPointerDown={(e) => onPointerDown(e, d.id)}
