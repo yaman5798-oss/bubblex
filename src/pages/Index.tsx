@@ -355,12 +355,14 @@ const Index = () => {
             backgroundImage:
               "linear-gradient(hsl(var(--canvas-grid)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--canvas-grid)) 1px, transparent 1px)",
             backgroundSize: "40px 40px",
+            cursor: isPanning ? "grabbing" : "grab",
           }}
+          onPointerDown={onCanvasPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
           onPointerLeave={endDrag}
           onClick={(e) => {
-            if (e.target === canvasRef.current) setSelected(null);
+            if (e.target === canvasRef.current && !isPanning) setSelected(null);
           }}
         >
           {datasets.length === 0 && (
