@@ -390,7 +390,10 @@ const Index = () => {
           onPointerUp={endDrag}
           onPointerLeave={() => { setOverCanvas(false); endDrag(); }}
           onClick={(e) => {
-            if (!(e.target as Element).closest('[data-canvas-item]') && !isPanning) setSelected(null);
+            if (!(e.target as Element).closest('[data-canvas-item]') && !isPanning) {
+              setSelected(null);
+              setMultiSelected(new Set());
+            }
           }}
         >
           {datasets.length === 0 && (
