@@ -173,6 +173,7 @@ const Index = () => {
   // Pan state — click-and-drag empty canvas to translate the viewport.
   const panState = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
+  const [overCanvas, setOverCanvas] = useState(false);
 
   const onCanvasPointerDown = (e: React.PointerEvent) => {
     // Only start pan when click is on the canvas itself (empty space).
