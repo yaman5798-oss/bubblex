@@ -155,6 +155,11 @@ const Index = () => {
     }
   };
 
+  // Multi-selection of datasets for group movement (Ctrl/Cmd+click to toggle).
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  // Per-dataset offsets used while dragging the multi-selection together.
+  const groupOffsets = useRef<Map<string, { dx: number; dy: number }>>(new Map());
+
   const onPointerDown = (e: React.PointerEvent, id: string) => {
     e.preventDefault();
     const ds = datasets.find((d) => d.id === id);
@@ -163,6 +168,16 @@ const Index = () => {
     const rect = canvasRef.current.getBoundingClientRect();
     const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
     dragOffset.current = { x: w.x - ds.x, y: w.y - ds.y };
+    // If this circle belongs to the multi-selection, capture offsets of all
+    // selected (unlocked) circles relative to the primary so they move together.
+    groupOffsets.current.clear();
+    if (multiSelected.has(id) && multiSelected.size > 1) {
+      for (const sid of multiSelected) {
+        const sd = datasets.find((x) => x.id === sid);
+        if (!sd || sd.locked || sid === id) continue;
+        groupOffsets.current.set(sid, { dx: sd.x - ds.x, dy: sd.y - ds.y });
+      }
+    }
     setDragId(id);
     (e.target as Element).setPointerCapture(e.pointerId);
   };
