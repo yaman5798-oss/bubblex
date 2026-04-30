@@ -469,6 +469,15 @@ const Index = () => {
                 
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setMultiSelected((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(d.id)) next.delete(d.id);
+                      else next.add(d.id);
+                      return next;
+                    });
+                    return;
+                  }
                   setSelected({ type: "dataset", id: d.id });
                 }}
               >
