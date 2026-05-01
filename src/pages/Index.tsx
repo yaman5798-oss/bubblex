@@ -211,12 +211,71 @@ const Index = () => {
     };
   }, [ctxMenu, closeCtxMenu]);
 
+  // ---- Undo / Redo history for structural mutations (merge / delete / separate) ----
+  const undoStack = useRef<Dataset[][]>([]);
+  const redoStack = useRef<Dataset[][]>([]);
+  const [historyTick, setHistoryTick] = useState(0); // re-render when stacks change
+  const HISTORY_LIMIT = 50;
+
+  const snapshot = useCallback((arr: Dataset[]): Dataset[] =>
+    arr.map((d) => ({ ...d, values: new Set(d.values) })), []);
+
+  const pushHistory = useCallback(() => {
+    undoStack.current.push(snapshot(datasets));
+    if (undoStack.current.length > HISTORY_LIMIT) undoStack.current.shift();
+    redoStack.current = [];
+    setHistoryTick((t) => t + 1);
+  }, [datasets, snapshot]);
+
+  const undo = useCallback(() => {
+    const prev = undoStack.current.pop();
+    if (!prev) return;
+    redoStack.current.push(snapshot(datasets));
+    clearIntersectionCache();
+    setDatasets(prev);
+    setSelected(null);
+    setMultiSelected(new Set());
+    setHistoryTick((t) => t + 1);
+    toast.success("Undid last action");
+  }, [datasets, snapshot]);
+
+  const redo = useCallback(() => {
+    const next = redoStack.current.pop();
+    if (!next) return;
+    undoStack.current.push(snapshot(datasets));
+    clearIntersectionCache();
+    setDatasets(next);
+    setSelected(null);
+    setMultiSelected(new Set());
+    setHistoryTick((t) => t + 1);
+    toast.success("Redid action");
+  }, [datasets, snapshot]);
+
+  // Keyboard shortcuts: Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl+Y).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || tgt.isContentEditable)) return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      } else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z") ||
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y")) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
   const mergeSelected = (ids: string[]) => {
     if (ids.length < 2) return;
     const items = ids
       .map((id) => datasets.find((d) => d.id === id))
       .filter((d): d is Dataset => !!d);
     if (items.length < 2) return;
+    pushHistory();
     const cx = items.reduce((s, d) => s + d.x, 0) / items.length;
     const cy = items.reduce((s, d) => s + d.y, 0) / items.length;
     const scale = Math.min(3, Math.max(0.3, items.reduce((s, d) => s + (d.scale ?? 1), 0) / items.length));
@@ -247,6 +306,7 @@ const Index = () => {
 
   const deleteMany = (ids: string[]) => {
     if (ids.length === 0) return;
+    pushHistory();
     const removeIds = new Set(ids);
     ids.forEach((id) => clearIntersectionCache(id));
     setDatasets((arr) => arr.filter((d) => !removeIds.has(d.id)));
@@ -258,6 +318,7 @@ const Index = () => {
   const separateMerged = (id: string) => {
     const ds = datasets.find((d) => d.id === id);
     if (!ds || !ds.mergedFrom || ds.mergedFrom.length === 0) return;
+    pushHistory();
     const originals = ds.mergedFrom;
     const restored: Dataset[] = originals.map((o, i) => {
       const angle = (i / originals.length) * Math.PI * 2;
