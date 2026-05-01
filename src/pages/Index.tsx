@@ -1349,8 +1349,17 @@ const DatasetPanel = ({
         )}
         <p className="text-xs text-muted-foreground">
           {dataset.rows.length} rows · {dataset.headers.length} columns
+          {dataset.mergedFrom && dataset.mergedFrom.length > 0 && (
+            <> · merged from {dataset.mergedFrom.length}</>
+          )}
         </p>
       </div>
+      <Button onClick={() => downloadDatasetXlsx(dataset)} className="w-full gap-2">
+        <Download className="h-4 w-4" />
+        {dataset.mergedFrom && dataset.mergedFrom.length > 0
+          ? `Download merged .xlsx (${dataset.mergedFrom.length} sources)`
+          : "Download dataset .xlsx"}
+      </Button>
       <RowsPreview rows={dataset.rows} highlight={sharedSet} />
     </div>
   );
