@@ -17,9 +17,40 @@ import {
   sharedValuesFor,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lock, Unlock, ChevronDown, ChevronRight, GripHorizontal } from "lucide-react";
+import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lock, Unlock, ChevronDown, ChevronRight, GripHorizontal, Undo2, Redo2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
+
+/** Build & download a single dataset as .xlsx (used for merged datasets). */
+const downloadDatasetXlsx = (ds: Dataset) => {
+  const wb = XLSX.utils.book_new();
+  const safe = (n: string) =>
+    n.replace(/\.[^.]+$/, "").replace(/[\\/?*[\]:]/g, "_").slice(0, 28) || "dataset";
+  const sheet = XLSX.utils.json_to_sheet(
+    ds.rows.length ? ds.rows : [{ info: "no rows" }],
+    { header: ds.headers.length ? ds.headers : undefined }
+  );
+  XLSX.utils.book_append_sheet(wb, sheet, safe(ds.name));
+  // If this is a merged dataset, also embed each original as its own sheet.
+  if (ds.mergedFrom && ds.mergedFrom.length) {
+    const used = new Set<string>([safe(ds.name)]);
+    for (const o of ds.mergedFrom) {
+      let name = safe(o.name);
+      let i = 2;
+      while (used.has(name)) name = `${safe(o.name).slice(0, 25)}_${i++}`;
+      used.add(name);
+      if (o.sourceSheet) {
+        const cloned: XLSX.WorkSheet = JSON.parse(JSON.stringify(o.sourceSheet));
+        XLSX.utils.book_append_sheet(wb, cloned, name);
+      } else {
+        const s = XLSX.utils.json_to_sheet(o.rows.length ? o.rows : [{ info: "no rows" }]);
+        XLSX.utils.book_append_sheet(wb, s, name);
+      }
+    }
+  }
+  XLSX.writeFile(wb, `${safe(ds.name)}.xlsx`, { cellStyles: true });
+};
 
 const Index = () => {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
