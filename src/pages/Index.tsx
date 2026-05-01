@@ -523,7 +523,7 @@ const Index = () => {
             Upload .xlsx / .xls / .xml · drag the diagonal ovals to overlap and find shared cell values
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <input
             ref={fileInput}
             type="file"
@@ -535,6 +535,27 @@ const Index = () => {
               e.target.value = "";
             }}
           />
+          {/* Undo / Redo — top right for quick access */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={undo}
+            disabled={undoStack.current.length === 0}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={redo}
+            disabled={redoStack.current.length === 0}
+            title="Redo (Ctrl+Shift+Z)"
+            aria-label="Redo"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
           <Button onClick={() => fileInput.current?.click()} className="gap-2">
             <Upload className="h-4 w-4" /> Upload files
           </Button>
