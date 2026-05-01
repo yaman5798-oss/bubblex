@@ -535,12 +535,12 @@ const Index = () => {
               e.target.value = "";
             }}
           />
-          {/* Undo / Redo — top right for quick access */}
+          {/* Undo / Redo — top right for quick access. historyTick re-renders disabled state. */}
           <Button
             variant="outline"
             size="icon"
             onClick={undo}
-            disabled={undoStack.current.length === 0 && historyTick >= 0 ? undoStack.current.length === 0 : undoStack.current.length === 0}
+            disabled={historyTick >= 0 && undoStack.current.length === 0}
             title="Undo (Ctrl+Z)"
             aria-label="Undo"
           >
@@ -550,7 +550,7 @@ const Index = () => {
             variant="outline"
             size="icon"
             onClick={redo}
-            disabled={redoStack.current.length === 0 && historyTick >= 0 ? redoStack.current.length === 0 : redoStack.current.length === 0}
+            disabled={historyTick >= 0 && redoStack.current.length === 0}
             title="Redo (Ctrl+Shift+Z)"
             aria-label="Redo"
           >
