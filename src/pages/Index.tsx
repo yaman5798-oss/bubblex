@@ -17,9 +17,40 @@ import {
   sharedValuesFor,
 } from "@/lib/datasetUtils";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lock, Unlock, ChevronDown, ChevronRight, GripHorizontal } from "lucide-react";
+import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lock, Unlock, ChevronDown, ChevronRight, GripHorizontal, Undo2, Redo2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
+
+/** Build & download a single dataset as .xlsx (used for merged datasets). */
+const downloadDatasetXlsx = (ds: Dataset) => {
+  const wb = XLSX.utils.book_new();
+  const safe = (n: string) =>
+    n.replace(/\.[^.]+$/, "").replace(/[\\/?*[\]:]/g, "_").slice(0, 28) || "dataset";
+  const sheet = XLSX.utils.json_to_sheet(
+    ds.rows.length ? ds.rows : [{ info: "no rows" }],
+    { header: ds.headers.length ? ds.headers : undefined }
+  );
+  XLSX.utils.book_append_sheet(wb, sheet, safe(ds.name));
+  // If this is a merged dataset, also embed each original as its own sheet.
+  if (ds.mergedFrom && ds.mergedFrom.length) {
+    const used = new Set<string>([safe(ds.name)]);
+    for (const o of ds.mergedFrom) {
+      let name = safe(o.name);
+      let i = 2;
+      while (used.has(name)) name = `${safe(o.name).slice(0, 25)}_${i++}`;
+      used.add(name);
+      if (o.sourceSheet) {
+        const cloned: XLSX.WorkSheet = JSON.parse(JSON.stringify(o.sourceSheet));
+        XLSX.utils.book_append_sheet(wb, cloned, name);
+      } else {
+        const s = XLSX.utils.json_to_sheet(o.rows.length ? o.rows : [{ info: "no rows" }]);
+        XLSX.utils.book_append_sheet(wb, s, name);
+      }
+    }
+  }
+  XLSX.writeFile(wb, `${safe(ds.name)}.xlsx`, { cellStyles: true });
+};
 
 const Index = () => {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -180,12 +211,71 @@ const Index = () => {
     };
   }, [ctxMenu, closeCtxMenu]);
 
+  // ---- Undo / Redo history for structural mutations (merge / delete / separate) ----
+  const undoStack = useRef<Dataset[][]>([]);
+  const redoStack = useRef<Dataset[][]>([]);
+  const [historyTick, setHistoryTick] = useState(0); // re-render when stacks change
+  const HISTORY_LIMIT = 50;
+
+  const snapshot = useCallback((arr: Dataset[]): Dataset[] =>
+    arr.map((d) => ({ ...d, values: new Set(d.values) })), []);
+
+  const pushHistory = useCallback(() => {
+    undoStack.current.push(snapshot(datasets));
+    if (undoStack.current.length > HISTORY_LIMIT) undoStack.current.shift();
+    redoStack.current = [];
+    setHistoryTick((t) => t + 1);
+  }, [datasets, snapshot]);
+
+  const undo = useCallback(() => {
+    const prev = undoStack.current.pop();
+    if (!prev) return;
+    redoStack.current.push(snapshot(datasets));
+    clearIntersectionCache();
+    setDatasets(prev);
+    setSelected(null);
+    setMultiSelected(new Set());
+    setHistoryTick((t) => t + 1);
+    toast.success("Undid last action");
+  }, [datasets, snapshot]);
+
+  const redo = useCallback(() => {
+    const next = redoStack.current.pop();
+    if (!next) return;
+    undoStack.current.push(snapshot(datasets));
+    clearIntersectionCache();
+    setDatasets(next);
+    setSelected(null);
+    setMultiSelected(new Set());
+    setHistoryTick((t) => t + 1);
+    toast.success("Redid action");
+  }, [datasets, snapshot]);
+
+  // Keyboard shortcuts: Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl+Y).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || tgt.isContentEditable)) return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      } else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z") ||
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y")) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
   const mergeSelected = (ids: string[]) => {
     if (ids.length < 2) return;
     const items = ids
       .map((id) => datasets.find((d) => d.id === id))
       .filter((d): d is Dataset => !!d);
     if (items.length < 2) return;
+    pushHistory();
     const cx = items.reduce((s, d) => s + d.x, 0) / items.length;
     const cy = items.reduce((s, d) => s + d.y, 0) / items.length;
     const scale = Math.min(3, Math.max(0.3, items.reduce((s, d) => s + (d.scale ?? 1), 0) / items.length));
@@ -216,6 +306,7 @@ const Index = () => {
 
   const deleteMany = (ids: string[]) => {
     if (ids.length === 0) return;
+    pushHistory();
     const removeIds = new Set(ids);
     ids.forEach((id) => clearIntersectionCache(id));
     setDatasets((arr) => arr.filter((d) => !removeIds.has(d.id)));
@@ -227,6 +318,7 @@ const Index = () => {
   const separateMerged = (id: string) => {
     const ds = datasets.find((d) => d.id === id);
     if (!ds || !ds.mergedFrom || ds.mergedFrom.length === 0) return;
+    pushHistory();
     const originals = ds.mergedFrom;
     const restored: Dataset[] = originals.map((o, i) => {
       const angle = (i / originals.length) * Math.PI * 2;
@@ -384,6 +476,7 @@ const Index = () => {
   const renameDataset = (id: string, newName: string) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
+    setDatasets((arr) => arr.map((d) => (d.id === id ? { ...d, name: trimmed } : d)));
   };
 
   const toggleLock = (id: string) => {
@@ -430,7 +523,7 @@ const Index = () => {
             Upload .xlsx / .xls / .xml · drag the diagonal ovals to overlap and find shared cell values
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <input
             ref={fileInput}
             type="file"
@@ -442,6 +535,27 @@ const Index = () => {
               e.target.value = "";
             }}
           />
+          {/* Undo / Redo — top right for quick access. historyTick re-renders disabled state. */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={undo}
+            disabled={historyTick >= 0 && undoStack.current.length === 0}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={redo}
+            disabled={historyTick >= 0 && redoStack.current.length === 0}
+            title="Redo (Ctrl+Shift+Z)"
+            aria-label="Redo"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
           <Button onClick={() => fileInput.current?.click()} className="gap-2">
             <Upload className="h-4 w-4" /> Upload files
           </Button>
@@ -1235,8 +1349,17 @@ const DatasetPanel = ({
         )}
         <p className="text-xs text-muted-foreground">
           {dataset.rows.length} rows · {dataset.headers.length} columns
+          {dataset.mergedFrom && dataset.mergedFrom.length > 0 && (
+            <> · merged from {dataset.mergedFrom.length}</>
+          )}
         </p>
       </div>
+      <Button onClick={() => downloadDatasetXlsx(dataset)} className="w-full gap-2">
+        <Download className="h-4 w-4" />
+        {dataset.mergedFrom && dataset.mergedFrom.length > 0
+          ? `Download merged .xlsx (${dataset.mergedFrom.length} sources)`
+          : "Download dataset .xlsx"}
+      </Button>
       <RowsPreview rows={dataset.rows} highlight={sharedSet} />
     </div>
   );
