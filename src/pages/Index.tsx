@@ -28,21 +28,23 @@ import * as XLSX from "xlsx";
 const downloadColumnScopedIntersection = (
   group: IntersectionGroup,
   datasets: Dataset[],
-  columnByDs: Record<string, string>
+  columnsByDs: Record<string, string[]>
 ) => {
-  const ids = group.datasetIds.filter((id) => columnByDs[id]);
+  const ids = group.datasetIds.filter((id) => (columnsByDs[id]?.length ?? 0) > 0);
   if (ids.length < 2) return;
 
-  // Per-dataset normalized value set from chosen column.
+  // Per-dataset normalized value set pooled from ALL chosen columns.
   const valuesByDs: Record<string, Set<string>> = {};
   for (const id of ids) {
     const ds = datasets.find((d) => d.id === id);
     if (!ds) continue;
-    const col = columnByDs[id];
+    const cols = columnsByDs[id];
     const set = new Set<string>();
     for (const r of ds.rows) {
-      const n = normalizeValue(r[col]);
-      if (n !== "") set.add(n);
+      for (const col of cols) {
+        const n = normalizeValue(r[col]);
+        if (n !== "") set.add(n);
+      }
     }
     valuesByDs[id] = set;
   }
