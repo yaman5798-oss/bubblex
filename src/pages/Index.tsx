@@ -22,7 +22,6 @@ import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lo
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { normalizeValue } from "@/lib/datasetUtils";
 
 /** Build & download a column-scoped intersection (one column picked per dataset).
  *  Only treats values within those columns as the intersection set. */
