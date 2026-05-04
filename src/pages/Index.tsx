@@ -1279,31 +1279,52 @@ const GroupPanel = ({
         <div>
           <p className="text-xs font-semibold">Column-scoped intersection</p>
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Pick one column per dataset (e.g. Customer Name). Only duplicates within those
-            specific columns will be exported.
+            Pick one or more columns per dataset (e.g. Customer Name, Email). Only duplicates
+            within those specific columns will be exported.
           </p>
         </div>
-        {groupDatasets.map((ds) => (
-          <div key={ds.id} className="flex items-center gap-2">
-            <span
-              className="h-2 w-2 rounded-full shrink-0"
-              style={{ background: `hsl(var(${ds.colorVar}))` }}
-            />
-            <span className="text-[11px] truncate flex-1" title={ds.name}>{ds.name}</span>
-            <select
-              value={scopedColByDs[ds.id] ?? ""}
-              onChange={(e) =>
-                setScopedColByDs((s) => ({ ...s, [ds.id]: e.target.value }))
-              }
-              className="h-7 text-[11px] bg-background/60 border border-[hsl(var(--panel-border))] rounded px-1 max-w-[55%]"
-            >
-              <option value="">— column —</option>
-              {ds.headers.map((h) => (
-                <option key={h} value={h}>{h}</option>
-              ))}
-            </select>
-          </div>
-        ))}
+        {groupDatasets.map((ds) => {
+          const selected = scopedColByDs[ds.id] ?? [];
+          const toggle = (h: string) =>
+            setScopedColByDs((s) => {
+              const cur = new Set(s[ds.id] ?? []);
+              if (cur.has(h)) cur.delete(h);
+              else cur.add(h);
+              return { ...s, [ds.id]: Array.from(cur) };
+            });
+          return (
+            <div key={ds.id} className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ background: `hsl(var(${ds.colorVar}))` }}
+                />
+                <span className="text-[11px] truncate flex-1" title={ds.name}>{ds.name}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {selected.length} sel
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1 pl-4 max-h-24 overflow-y-auto">
+                {ds.headers.map((h) => {
+                  const on = selected.includes(h);
+                  return (
+                    <button
+                      key={h}
+                      onClick={() => toggle(h)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                        on
+                          ? "bg-primary/20 border-primary text-foreground"
+                          : "bg-background/60 border-[hsl(var(--panel-border))] text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {h}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
         <Button
           size="sm"
           variant="secondary"
