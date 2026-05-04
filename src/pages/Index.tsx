@@ -1263,6 +1263,51 @@ const GroupPanel = ({
         </button>
       )}
 
+      {/* Column-scoped intersection: pick ONE column per dataset (e.g. Customer Name)
+          and only treat duplicates within those columns as the intersection. */}
+      <div className="rounded-md border border-[hsl(var(--panel-border))] bg-white/5 p-3 space-y-2">
+        <div>
+          <p className="text-xs font-semibold">Column-scoped intersection</p>
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Pick one column per dataset (e.g. Customer Name). Only duplicates within those
+            specific columns will be exported.
+          </p>
+        </div>
+        {groupDatasets.map((ds) => (
+          <div key={ds.id} className="flex items-center gap-2">
+            <span
+              className="h-2 w-2 rounded-full shrink-0"
+              style={{ background: `hsl(var(${ds.colorVar}))` }}
+            />
+            <span className="text-[11px] truncate flex-1" title={ds.name}>{ds.name}</span>
+            <select
+              value={scopedColByDs[ds.id] ?? ""}
+              onChange={(e) =>
+                setScopedColByDs((s) => ({ ...s, [ds.id]: e.target.value }))
+              }
+              className="h-7 text-[11px] bg-background/60 border border-[hsl(var(--panel-border))] rounded px-1 max-w-[55%]"
+            >
+              <option value="">— column —</option>
+              {ds.headers.map((h) => (
+                <option key={h} value={h}>{h}</option>
+              ))}
+            </select>
+          </div>
+        ))}
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!scopedReady}
+          onClick={() =>
+            downloadColumnScopedIntersection(group, datasets, scopedColByDs)
+          }
+          className="w-full gap-2"
+        >
+          <Download className="h-4 w-4" />
+          Download column-scoped .xlsx
+        </Button>
+      </div>
+
       <div className="flex gap-1 border-b border-[hsl(var(--panel-border))]">
         {(["shared", "matched", "unique"] as const).map((t) => (
           <button
