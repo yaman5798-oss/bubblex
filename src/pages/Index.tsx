@@ -1184,7 +1184,11 @@ const GroupPanel = ({
   // Reset selections when switching to a different intersection.
   useEffect(() => {
     setSelectionByDs({});
+    setScopedColByDs({});
   }, [group.id]);
+  const scopedReady =
+    group.datasetIds.length >= 2 &&
+    group.datasetIds.every((id) => !!scopedColByDs[id]);
 
   const toggleColumn = (dsId: string, col: string) => {
     setSelectionByDs((s) => {
