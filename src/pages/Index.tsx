@@ -12,6 +12,7 @@ import {
   downloadIntersectionXlsx,
   extractValues,
   materializeGroup,
+  normalizeValue,
   parseFile,
   pointInEllipse,
   sharedValuesFor,
@@ -21,6 +22,80 @@ import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lo
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+
+/** Build & download a column-scoped intersection (one column picked per dataset).
+ *  Only treats values within those columns as the intersection set. */
+const downloadColumnScopedIntersection = (
+  group: IntersectionGroup,
+  datasets: Dataset[],
+  columnByDs: Record<string, string>
+) => {
+  const ids = group.datasetIds.filter((id) => columnByDs[id]);
+  if (ids.length < 2) return;
+
+  // Per-dataset normalized value set from chosen column.
+  const valuesByDs: Record<string, Set<string>> = {};
+  for (const id of ids) {
+    const ds = datasets.find((d) => d.id === id);
+    if (!ds) continue;
+    const col = columnByDs[id];
+    const set = new Set<string>();
+    for (const r of ds.rows) {
+      const n = normalizeValue(r[col]);
+      if (n !== "") set.add(n);
+    }
+    valuesByDs[id] = set;
+  }
+  // Intersect across all chosen sets.
+  const sortedIds = ids.slice().sort((a, b) => valuesByDs[a].size - valuesByDs[b].size);
+  let shared = Array.from(valuesByDs[sortedIds[0]]);
+  for (let i = 1; i < sortedIds.length; i++) {
+    const s = valuesByDs[sortedIds[i]];
+    shared = shared.filter((v) => s.has(v));
+  }
+  shared.sort();
+
+  const wb = XLSX.utils.book_new();
+  const safe = (n: string, max = 28) =>
+    n.replace(/\.[^.]+$/, "").replace(/[\\/?*[\]:]/g, "_").slice(0, max) || "sheet";
+  const used = new Set<string>();
+  const uniq = (n: string) => {
+    let name = n.slice(0, 31);
+    let i = 2;
+    while (used.has(name)) name = `${n.slice(0, 28)}_${i++}`;
+    used.add(name);
+    return name;
+  };
+
+  // Sheet 1: shared values + which column each came from.
+  const header = ["shared_value", ...ids.map((id) => {
+    const ds = datasets.find((d) => d.id === id);
+    return `${ds ? safe(ds.name, 18) : id} [${columnByDs[id]}]`;
+  })];
+  const aoa: (string | number)[][] = [header];
+  for (const v of shared) aoa.push([v, ...ids.map(() => v)]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), uniq("Shared (column)"));
+
+  // Per dataset: rows whose chosen column value is in shared set.
+  const sharedSet = new Set(shared);
+  for (const id of ids) {
+    const ds = datasets.find((d) => d.id === id);
+    if (!ds) continue;
+    const col = columnByDs[id];
+    const rows = ds.rows.filter((r) => sharedSet.has(normalizeValue(r[col])));
+    const sheet = XLSX.utils.json_to_sheet(
+      rows.length ? rows : [{ info: "no matching rows" }],
+      { header: rows.length ? [col, ...ds.headers.filter((h) => h !== col)] : undefined }
+    );
+    XLSX.utils.book_append_sheet(wb, sheet, uniq(`${safe(ds.name, 20)}_match`));
+  }
+
+  const names = ids
+    .map((id) => datasets.find((d) => d.id === id)?.name ?? "set")
+    .map((n) => n.replace(/\.[^.]+$/, ""))
+    .join("__");
+  XLSX.writeFile(wb, `intersection_by_column__${names}.xlsx`, { cellStyles: true });
+};
 
 /** Build & download a single dataset as .xlsx (used for merged datasets). */
 const downloadDatasetXlsx = (ds: Dataset) => {
@@ -1104,10 +1179,16 @@ const GroupPanel = ({
   // Per-dataset selected columns for export. Empty/undefined ⇒ export ALL columns.
   // Toggled by double-clicking a header in the Matched rows view.
   const [selectionByDs, setSelectionByDs] = useState<Record<string, Set<string>>>({});
+  // Column-scoped intersection: ONE column per dataset.
+  const [scopedColByDs, setScopedColByDs] = useState<Record<string, string>>({});
   // Reset selections when switching to a different intersection.
   useEffect(() => {
     setSelectionByDs({});
+    setScopedColByDs({});
   }, [group.id]);
+  const scopedReady =
+    group.datasetIds.length >= 2 &&
+    group.datasetIds.every((id) => !!scopedColByDs[id]);
 
   const toggleColumn = (dsId: string, col: string) => {
     setSelectionByDs((s) => {
@@ -1187,6 +1268,51 @@ const GroupPanel = ({
           Clear column selection
         </button>
       )}
+
+      {/* Column-scoped intersection: pick ONE column per dataset (e.g. Customer Name)
+          and only treat duplicates within those columns as the intersection. */}
+      <div className="rounded-md border border-[hsl(var(--panel-border))] bg-white/5 p-3 space-y-2">
+        <div>
+          <p className="text-xs font-semibold">Column-scoped intersection</p>
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Pick one column per dataset (e.g. Customer Name). Only duplicates within those
+            specific columns will be exported.
+          </p>
+        </div>
+        {groupDatasets.map((ds) => (
+          <div key={ds.id} className="flex items-center gap-2">
+            <span
+              className="h-2 w-2 rounded-full shrink-0"
+              style={{ background: `hsl(var(${ds.colorVar}))` }}
+            />
+            <span className="text-[11px] truncate flex-1" title={ds.name}>{ds.name}</span>
+            <select
+              value={scopedColByDs[ds.id] ?? ""}
+              onChange={(e) =>
+                setScopedColByDs((s) => ({ ...s, [ds.id]: e.target.value }))
+              }
+              className="h-7 text-[11px] bg-background/60 border border-[hsl(var(--panel-border))] rounded px-1 max-w-[55%]"
+            >
+              <option value="">— column —</option>
+              {ds.headers.map((h) => (
+                <option key={h} value={h}>{h}</option>
+              ))}
+            </select>
+          </div>
+        ))}
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!scopedReady}
+          onClick={() =>
+            downloadColumnScopedIntersection(group, datasets, scopedColByDs)
+          }
+          className="w-full gap-2"
+        >
+          <Download className="h-4 w-4" />
+          Download column-scoped .xlsx
+        </Button>
+      </div>
 
       <div className="flex gap-1 border-b border-[hsl(var(--panel-border))]">
         {(["shared", "matched", "unique"] as const).map((t) => (
