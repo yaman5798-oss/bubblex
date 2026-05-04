@@ -28,21 +28,23 @@ import * as XLSX from "xlsx";
 const downloadColumnScopedIntersection = (
   group: IntersectionGroup,
   datasets: Dataset[],
-  columnByDs: Record<string, string>
+  columnsByDs: Record<string, string[]>
 ) => {
-  const ids = group.datasetIds.filter((id) => columnByDs[id]);
+  const ids = group.datasetIds.filter((id) => (columnsByDs[id]?.length ?? 0) > 0);
   if (ids.length < 2) return;
 
-  // Per-dataset normalized value set from chosen column.
+  // Per-dataset normalized value set pooled from ALL chosen columns.
   const valuesByDs: Record<string, Set<string>> = {};
   for (const id of ids) {
     const ds = datasets.find((d) => d.id === id);
     if (!ds) continue;
-    const col = columnByDs[id];
+    const cols = columnsByDs[id];
     const set = new Set<string>();
     for (const r of ds.rows) {
-      const n = normalizeValue(r[col]);
-      if (n !== "") set.add(n);
+      for (const col of cols) {
+        const n = normalizeValue(r[col]);
+        if (n !== "") set.add(n);
+      }
     }
     valuesByDs[id] = set;
   }
@@ -67,25 +69,27 @@ const downloadColumnScopedIntersection = (
     return name;
   };
 
-  // Sheet 1: shared values + which column each came from.
+  // Sheet 1: shared values + which columns each came from.
   const header = ["shared_value", ...ids.map((id) => {
     const ds = datasets.find((d) => d.id === id);
-    return `${ds ? safe(ds.name, 18) : id} [${columnByDs[id]}]`;
+    return `${ds ? safe(ds.name, 18) : id} [${columnsByDs[id].join(", ")}]`;
   })];
   const aoa: (string | number)[][] = [header];
   for (const v of shared) aoa.push([v, ...ids.map(() => v)]);
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), uniq("Shared (column)"));
 
-  // Per dataset: rows whose chosen column value is in shared set.
+  // Per dataset: rows where ANY chosen column value is in shared set.
   const sharedSet = new Set(shared);
   for (const id of ids) {
     const ds = datasets.find((d) => d.id === id);
     if (!ds) continue;
-    const col = columnByDs[id];
-    const rows = ds.rows.filter((r) => sharedSet.has(normalizeValue(r[col])));
+    const cols = columnsByDs[id];
+    const rows = ds.rows.filter((r) =>
+      cols.some((c) => sharedSet.has(normalizeValue(r[c])))
+    );
     const sheet = XLSX.utils.json_to_sheet(
       rows.length ? rows : [{ info: "no matching rows" }],
-      { header: rows.length ? [col, ...ds.headers.filter((h) => h !== col)] : undefined }
+      { header: rows.length ? [...cols, ...ds.headers.filter((h) => !cols.includes(h))] : undefined }
     );
     XLSX.utils.book_append_sheet(wb, sheet, uniq(`${safe(ds.name, 20)}_match`));
   }
@@ -1179,8 +1183,8 @@ const GroupPanel = ({
   // Per-dataset selected columns for export. Empty/undefined ⇒ export ALL columns.
   // Toggled by double-clicking a header in the Matched rows view.
   const [selectionByDs, setSelectionByDs] = useState<Record<string, Set<string>>>({});
-  // Column-scoped intersection: ONE column per dataset.
-  const [scopedColByDs, setScopedColByDs] = useState<Record<string, string>>({});
+  // Column-scoped intersection: ONE OR MORE columns per dataset.
+  const [scopedColByDs, setScopedColByDs] = useState<Record<string, string[]>>({});
   // Reset selections when switching to a different intersection.
   useEffect(() => {
     setSelectionByDs({});
@@ -1188,7 +1192,7 @@ const GroupPanel = ({
   }, [group.id]);
   const scopedReady =
     group.datasetIds.length >= 2 &&
-    group.datasetIds.every((id) => !!scopedColByDs[id]);
+    group.datasetIds.every((id) => (scopedColByDs[id]?.length ?? 0) > 0);
 
   const toggleColumn = (dsId: string, col: string) => {
     setSelectionByDs((s) => {
@@ -1275,31 +1279,52 @@ const GroupPanel = ({
         <div>
           <p className="text-xs font-semibold">Column-scoped intersection</p>
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Pick one column per dataset (e.g. Customer Name). Only duplicates within those
-            specific columns will be exported.
+            Pick one or more columns per dataset (e.g. Customer Name, Email). Only duplicates
+            within those specific columns will be exported.
           </p>
         </div>
-        {groupDatasets.map((ds) => (
-          <div key={ds.id} className="flex items-center gap-2">
-            <span
-              className="h-2 w-2 rounded-full shrink-0"
-              style={{ background: `hsl(var(${ds.colorVar}))` }}
-            />
-            <span className="text-[11px] truncate flex-1" title={ds.name}>{ds.name}</span>
-            <select
-              value={scopedColByDs[ds.id] ?? ""}
-              onChange={(e) =>
-                setScopedColByDs((s) => ({ ...s, [ds.id]: e.target.value }))
-              }
-              className="h-7 text-[11px] bg-background/60 border border-[hsl(var(--panel-border))] rounded px-1 max-w-[55%]"
-            >
-              <option value="">— column —</option>
-              {ds.headers.map((h) => (
-                <option key={h} value={h}>{h}</option>
-              ))}
-            </select>
-          </div>
-        ))}
+        {groupDatasets.map((ds) => {
+          const selected = scopedColByDs[ds.id] ?? [];
+          const toggle = (h: string) =>
+            setScopedColByDs((s) => {
+              const cur = new Set(s[ds.id] ?? []);
+              if (cur.has(h)) cur.delete(h);
+              else cur.add(h);
+              return { ...s, [ds.id]: Array.from(cur) };
+            });
+          return (
+            <div key={ds.id} className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ background: `hsl(var(${ds.colorVar}))` }}
+                />
+                <span className="text-[11px] truncate flex-1" title={ds.name}>{ds.name}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {selected.length} sel
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1 pl-4 max-h-24 overflow-y-auto">
+                {ds.headers.map((h) => {
+                  const on = selected.includes(h);
+                  return (
+                    <button
+                      key={h}
+                      onClick={() => toggle(h)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                        on
+                          ? "bg-primary/20 border-primary text-foreground"
+                          : "bg-background/60 border-[hsl(var(--panel-border))] text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {h}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
         <Button
           size="sm"
           variant="secondary"
