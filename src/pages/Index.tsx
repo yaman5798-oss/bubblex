@@ -12,6 +12,7 @@ import {
   downloadIntersectionXlsx,
   extractValues,
   materializeGroup,
+  normalizeValue,
   parseFile,
   pointInEllipse,
   sharedValuesFor,
