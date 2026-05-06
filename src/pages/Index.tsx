@@ -1311,20 +1311,26 @@ const GroupPanel = ({
         </button>
       )}
 
-      {/* Column-scoped intersection: pick ONE column per dataset (e.g. Customer Name)
-          and only treat duplicates within those columns as the intersection. */}
+      {/* Column-scoped, anchor-aligned export.
+          Pick ONE anchor column per dataset (e.g. Customer Name) — rows are
+          aligned across datasets by that anchor. Optionally include extra
+          columns (Variance, YTD, …) which travel along on the same row. */}
       <div className="rounded-md border border-[hsl(var(--panel-border))] bg-white/5 p-3 space-y-2">
         <div>
-          <p className="text-xs font-semibold">Column-scoped intersection</p>
+          <p className="text-xs font-semibold">Anchor-aligned export</p>
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Pick one or more columns per dataset (e.g. Customer Name, Email). Only duplicates
-            within those specific columns will be exported.
+            Pick one <b>anchor</b> column per dataset (e.g. Customer Name). Rows
+            are aligned across datasets by the anchor value. Tick extra columns
+            (variance, YTD…) to bring them along on the same line.
           </p>
         </div>
         {groupDatasets.map((ds) => {
-          const selected = scopedColByDs[ds.id] ?? [];
-          const toggle = (h: string) =>
-            setScopedColByDs((s) => {
+          const anchor = anchorByDs[ds.id];
+          const extras = extraByDs[ds.id] ?? [];
+          const setAnchor = (h: string) =>
+            setAnchorByDs((s) => ({ ...s, [ds.id]: h }));
+          const toggleExtra = (h: string) =>
+            setExtraByDs((s) => {
               const cur = new Set(s[ds.id] ?? []);
               if (cur.has(h)) cur.delete(h);
               else cur.add(h);
@@ -1338,17 +1344,24 @@ const GroupPanel = ({
                   style={{ background: `hsl(var(${ds.colorVar}))` }}
                 />
                 <span className="text-[11px] truncate flex-1" title={ds.name}>{ds.name}</span>
-                <span className="text-[10px] text-muted-foreground">
-                  {selected.length} sel
-                </span>
+                <select
+                  value={anchor ?? ""}
+                  onChange={(e) => setAnchor(e.target.value)}
+                  className="text-[10px] bg-background/60 border border-[hsl(var(--panel-border))] rounded px-1 py-0.5 max-w-[140px]"
+                >
+                  <option value="">— anchor —</option>
+                  {ds.headers.map((h) => (
+                    <option key={h} value={h}>{h}</option>
+                  ))}
+                </select>
               </div>
               <div className="flex flex-wrap gap-1 pl-4 max-h-24 overflow-y-auto">
-                {ds.headers.map((h) => {
-                  const on = selected.includes(h);
+                {ds.headers.filter((h) => h !== anchor).map((h) => {
+                  const on = extras.includes(h);
                   return (
                     <button
                       key={h}
-                      onClick={() => toggle(h)}
+                      onClick={() => toggleExtra(h)}
                       className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
                         on
                           ? "bg-primary/20 border-primary text-foreground"
@@ -1363,18 +1376,32 @@ const GroupPanel = ({
             </div>
           );
         })}
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={!scopedReady}
-          onClick={() =>
-            downloadColumnScopedIntersection(group, datasets, scopedColByDs)
-          }
-          className="w-full gap-2"
-        >
-          <Download className="h-4 w-4" />
-          Download column-scoped .xlsx
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!scopedReady}
+            onClick={() =>
+              downloadColumnScopedIntersection(group, datasets, anchorByDs, extraByDs, "intersect")
+            }
+            className="gap-1"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Intersect
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!scopedReady}
+            onClick={() =>
+              downloadColumnScopedIntersection(group, datasets, anchorByDs, extraByDs, "union")
+            }
+            className="gap-1"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Union (all)
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-1 border-b border-[hsl(var(--panel-border))]">
