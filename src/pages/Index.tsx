@@ -1229,9 +1229,11 @@ const GroupPanel = ({
   // Per-dataset selected columns for export. Empty/undefined ⇒ export ALL columns.
   // Toggled by double-clicking a header in the Matched rows view.
   const [selectionByDs, setSelectionByDs] = useState<Record<string, Set<string>>>({});
-  // Column-scoped: ONE anchor column per dataset + zero-or-more extra columns.
-  const [anchorByDs, setAnchorByDs] = useState<Record<string, string>>({});
+  // Column-scoped: ONE OR MORE anchor columns per dataset (values pooled),
+  // plus zero-or-more extra columns brought along on the same row.
+  const [anchorByDs, setAnchorByDs] = useState<Record<string, string[]>>({});
   const [extraByDs, setExtraByDs] = useState<Record<string, string[]>>({});
+  const [previewMode, setPreviewMode] = useState<"intersect" | "union">("intersect");
   // Reset selections when switching to a different intersection.
   useEffect(() => {
     setSelectionByDs({});
@@ -1240,7 +1242,7 @@ const GroupPanel = ({
   }, [group.id]);
   const scopedReady =
     group.datasetIds.length >= 2 &&
-    group.datasetIds.every((id) => !!anchorByDs[id]);
+    group.datasetIds.every((id) => (anchorByDs[id]?.length ?? 0) > 0);
 
   const toggleColumn = (dsId: string, col: string) => {
     setSelectionByDs((s) => {
