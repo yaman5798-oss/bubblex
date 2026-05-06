@@ -1337,10 +1337,15 @@ const GroupPanel = ({
           </p>
         </div>
         {groupDatasets.map((ds) => {
-          const anchor = anchorByDs[ds.id];
+          const anchors = anchorByDs[ds.id] ?? [];
           const extras = extraByDs[ds.id] ?? [];
-          const setAnchor = (h: string) =>
-            setAnchorByDs((s) => ({ ...s, [ds.id]: h }));
+          const toggleAnchor = (h: string) =>
+            setAnchorByDs((s) => {
+              const cur = new Set(s[ds.id] ?? []);
+              if (cur.has(h)) cur.delete(h);
+              else cur.add(h);
+              return { ...s, [ds.id]: Array.from(cur) };
+            });
           const toggleExtra = (h: string) =>
             setExtraByDs((s) => {
               const cur = new Set(s[ds.id] ?? []);
@@ -1356,34 +1361,49 @@ const GroupPanel = ({
                   style={{ background: `hsl(var(${ds.colorVar}))` }}
                 />
                 <span className="text-[11px] truncate flex-1" title={ds.name}>{ds.name}</span>
-                <select
-                  value={anchor ?? ""}
-                  onChange={(e) => setAnchor(e.target.value)}
-                  className="text-[10px] bg-background/60 border border-[hsl(var(--panel-border))] rounded px-1 py-0.5 max-w-[140px]"
-                >
-                  <option value="">— anchor —</option>
-                  {ds.headers.map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
+                <span className="text-[10px] text-muted-foreground">
+                  {anchors.length}⚓ · {extras.length}+
+                </span>
               </div>
-              <div className="flex flex-wrap gap-1 pl-4 max-h-24 overflow-y-auto">
-                {ds.headers.filter((h) => h !== anchor).map((h) => {
-                  const on = extras.includes(h);
-                  return (
-                    <button
-                      key={h}
-                      onClick={() => toggleExtra(h)}
-                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                        on
-                          ? "bg-primary/20 border-primary text-foreground"
-                          : "bg-background/60 border-[hsl(var(--panel-border))] text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {h}
-                    </button>
-                  );
-                })}
+              <div className="pl-4 space-y-1">
+                <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Anchors (click to toggle)</div>
+                <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                  {ds.headers.map((h) => {
+                    const on = anchors.includes(h);
+                    return (
+                      <button
+                        key={h}
+                        onClick={() => toggleAnchor(h)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                          on
+                            ? "bg-amber-500/30 border-amber-400 text-foreground"
+                            : "bg-background/60 border-[hsl(var(--panel-border))] text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        ⚓ {h}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Extras</div>
+                <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                  {ds.headers.filter((h) => !anchors.includes(h)).map((h) => {
+                    const on = extras.includes(h);
+                    return (
+                      <button
+                        key={h}
+                        onClick={() => toggleExtra(h)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                          on
+                            ? "bg-primary/20 border-primary text-foreground"
+                            : "bg-background/60 border-[hsl(var(--panel-border))] text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {h}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
@@ -1414,6 +1434,17 @@ const GroupPanel = ({
             Union (all)
           </Button>
         </div>
+
+        {scopedReady && (
+          <AlignedPreview
+            group={group}
+            datasets={datasets}
+            anchorByDs={anchorByDs}
+            extraByDs={extraByDs}
+            mode={previewMode}
+            setMode={setPreviewMode}
+          />
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-[hsl(var(--panel-border))]">
