@@ -1539,6 +1539,96 @@ const GroupPanel = ({
   );
 };
 
+const AlignedPreview = ({
+  group,
+  datasets,
+  anchorByDs,
+  extraByDs,
+  mode,
+  setMode,
+}: {
+  group: IntersectionGroup;
+  datasets: Dataset[];
+  anchorByDs: Record<string, string[]>;
+  extraByDs: Record<string, string[]>;
+  mode: "intersect" | "union";
+  setMode: (m: "intersect" | "union") => void;
+}) => {
+  const { headers, rows } = useMemo(
+    () => buildAlignedRows(group, datasets, anchorByDs, extraByDs, mode),
+    [group, datasets, anchorByDs, extraByDs, mode]
+  );
+  const PREVIEW_LIMIT = 50;
+  const shown = rows.slice(0, PREVIEW_LIMIT);
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold">Live preview</p>
+        <div className="inline-flex rounded border border-[hsl(var(--panel-border))] overflow-hidden">
+          {(["intersect", "union"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`text-[10px] px-2 py-0.5 ${
+                mode === m
+                  ? "bg-primary/30 text-foreground"
+                  : "bg-background/60 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        {rows.length.toLocaleString()} row{rows.length === 1 ? "" : "s"}
+        {rows.length > PREVIEW_LIMIT ? ` · showing first ${PREVIEW_LIMIT}` : ""}
+      </p>
+      <div className="border border-[hsl(var(--panel-border))] rounded overflow-auto max-h-72 bg-background/50">
+        <table className="text-[10px] w-full border-collapse">
+          <thead className="sticky top-0 bg-background/95 backdrop-blur">
+            <tr>
+              {headers.map((h, i) => (
+                <th
+                  key={i}
+                  className="text-left font-semibold px-1.5 py-1 border-b border-[hsl(var(--panel-border))] whitespace-nowrap"
+                  title={h}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {shown.length === 0 ? (
+              <tr>
+                <td className="px-2 py-3 text-muted-foreground" colSpan={Math.max(1, headers.length)}>
+                  No matching rows.
+                </td>
+              </tr>
+            ) : (
+              shown.map((r, ri) => (
+                <tr key={ri} className="odd:bg-white/[0.02]">
+                  {r.map((c, ci) => (
+                    <td
+                      key={ci}
+                      className="px-1.5 py-0.5 border-b border-[hsl(var(--panel-border))]/40 align-top max-w-[180px] truncate"
+                      title={c == null ? "" : String(c)}
+                    >
+                      {c == null ? <span className="text-muted-foreground">—</span> : String(c)}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 const DatasetPanel = ({
   dataset,
   sharedSet,
