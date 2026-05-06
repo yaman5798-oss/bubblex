@@ -23,82 +23,118 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
-/** Build & download a column-scoped intersection (one column picked per dataset).
- *  Only treats values within those columns as the intersection set. */
+/** Build & download a column-scoped, anchor-aligned export.
+ *  - `anchorByDs`: ONE anchor column per dataset (e.g. Customer Name).
+ *  - `extraByDs`:  zero or more additional columns to bring along per dataset.
+ *  Output is a single sheet where each row represents one anchor value;
+ *  each dataset contributes its anchor cell + extra columns side-by-side.
+ *  - mode "union":     row exists if ANY dataset has the anchor value.
+ *  - mode "intersect": row exists only if ALL datasets have the anchor value.
+ */
 const downloadColumnScopedIntersection = (
   group: IntersectionGroup,
   datasets: Dataset[],
-  columnsByDs: Record<string, string[]>
+  anchorByDs: Record<string, string>,
+  extraByDs: Record<string, string[]>,
+  mode: "union" | "intersect"
 ) => {
-  const ids = group.datasetIds.filter((id) => (columnsByDs[id]?.length ?? 0) > 0);
+  const ids = group.datasetIds.filter((id) => !!anchorByDs[id]);
   if (ids.length < 2) return;
 
-  // Per-dataset normalized value set pooled from ALL chosen columns.
-  const valuesByDs: Record<string, Set<string>> = {};
-  for (const id of ids) {
-    const ds = datasets.find((d) => d.id === id);
-    if (!ds) continue;
-    const cols = columnsByDs[id];
-    const set = new Set<string>();
+  // Build per-dataset map: normalized anchor value -> array of full rows
+  // (a customer can appear multiple times). Also keep a display value (first hit).
+  type DsIndex = {
+    ds: Dataset;
+    anchor: string;
+    extras: string[];
+    rowsByVal: Map<string, Record<string, unknown>[]>;
+    displayByVal: Map<string, string>;
+  };
+  const indexes: DsIndex[] = ids.map((id) => {
+    const ds = datasets.find((d) => d.id === id)!;
+    const anchor = anchorByDs[id];
+    const extras = (extraByDs[id] ?? []).filter((c) => c !== anchor);
+    const rowsByVal = new Map<string, Record<string, unknown>[]>();
+    const displayByVal = new Map<string, string>();
     for (const r of ds.rows) {
-      for (const col of cols) {
-        const n = normalizeValue(r[col]);
-        if (n !== "") set.add(n);
-      }
+      const n = normalizeValue(r[anchor]);
+      if (n === "") continue;
+      let arr = rowsByVal.get(n);
+      if (!arr) { arr = []; rowsByVal.set(n, arr); }
+      arr.push(r);
+      if (!displayByVal.has(n)) displayByVal.set(n, String(r[anchor] ?? ""));
     }
-    valuesByDs[id] = set;
+    return { ds, anchor, extras, rowsByVal, displayByVal };
+  });
+
+  // Determine the set of anchor values to include.
+  let anchorVals: string[];
+  if (mode === "intersect") {
+    const sorted = indexes.slice().sort((a, b) => a.rowsByVal.size - b.rowsByVal.size);
+    anchorVals = Array.from(sorted[0].rowsByVal.keys()).filter((v) =>
+      sorted.every((idx) => idx.rowsByVal.has(v))
+    );
+  } else {
+    const all = new Set<string>();
+    for (const idx of indexes) for (const k of idx.rowsByVal.keys()) all.add(k);
+    anchorVals = Array.from(all);
   }
-  // Intersect across all chosen sets.
-  const sortedIds = ids.slice().sort((a, b) => valuesByDs[a].size - valuesByDs[b].size);
-  let shared = Array.from(valuesByDs[sortedIds[0]]);
-  for (let i = 1; i < sortedIds.length; i++) {
-    const s = valuesByDs[sortedIds[i]];
-    shared = shared.filter((v) => s.has(v));
+  anchorVals.sort();
+
+  // Build aligned rows. If a dataset has multiple rows for the same anchor,
+  // emit multiple aligned rows (the OTHER datasets repeat their first match).
+  const headers: string[] = ["anchor_value"];
+  const colSpans: { id: string; cols: string[] }[] = [];
+  for (const idx of indexes) {
+    const safeName = idx.ds.name.replace(/\.[^.]+$/, "");
+    const cols = [idx.anchor, ...idx.extras];
+    colSpans.push({ id: idx.ds.id, cols });
+    for (const c of cols) headers.push(`${safeName} · ${c}`);
   }
-  shared.sort();
+
+  const aoa: (string | number | null)[][] = [headers];
+  for (const v of anchorVals) {
+    const perDsRows = indexes.map((idx) => idx.rowsByVal.get(v) ?? [null]);
+    const maxLen = perDsRows.reduce((m, r) => Math.max(m, r.length), 1);
+    for (let i = 0; i < maxLen; i++) {
+      const row: (string | number | null)[] = [
+        indexes.find((idx) => idx.displayByVal.has(v))?.displayByVal.get(v) ?? v,
+      ];
+      indexes.forEach((idx, di) => {
+        const rs = perDsRows[di];
+        const r = rs[i] ?? rs[0] ?? null;
+        const cols = colSpans[di].cols;
+        if (!r) {
+          for (let k = 0; k < cols.length; k++) row.push(null);
+        } else {
+          for (const c of cols) {
+            const cell = (r as Record<string, unknown>)[c];
+            row.push(cell == null ? null : (typeof cell === "number" ? cell : String(cell)));
+          }
+        }
+      });
+      aoa.push(row);
+    }
+  }
 
   const wb = XLSX.utils.book_new();
   const safe = (n: string, max = 28) =>
     n.replace(/\.[^.]+$/, "").replace(/[\\/?*[\]:]/g, "_").slice(0, max) || "sheet";
-  const used = new Set<string>();
-  const uniq = (n: string) => {
-    let name = n.slice(0, 31);
-    let i = 2;
-    while (used.has(name)) name = `${n.slice(0, 28)}_${i++}`;
-    used.add(name);
-    return name;
-  };
-
-  // Sheet 1: shared values + which columns each came from.
-  const header = ["shared_value", ...ids.map((id) => {
-    const ds = datasets.find((d) => d.id === id);
-    return `${ds ? safe(ds.name, 18) : id} [${columnsByDs[id].join(", ")}]`;
-  })];
-  const aoa: (string | number)[][] = [header];
-  for (const v of shared) aoa.push([v, ...ids.map(() => v)]);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), uniq("Shared (column)"));
-
-  // Per dataset: rows where ANY chosen column value is in shared set.
-  const sharedSet = new Set(shared);
-  for (const id of ids) {
-    const ds = datasets.find((d) => d.id === id);
-    if (!ds) continue;
-    const cols = columnsByDs[id];
-    const rows = ds.rows.filter((r) =>
-      cols.some((c) => sharedSet.has(normalizeValue(r[c])))
-    );
-    const sheet = XLSX.utils.json_to_sheet(
-      rows.length ? rows : [{ info: "no matching rows" }],
-      { header: rows.length ? [...cols, ...ds.headers.filter((h) => !cols.includes(h))] : undefined }
-    );
-    XLSX.utils.book_append_sheet(wb, sheet, uniq(`${safe(ds.name, 20)}_match`));
-  }
+  const sheet = XLSX.utils.aoa_to_sheet(aoa);
+  sheet["!cols"] = headers.map(() => ({ wch: 20 }));
+  XLSX.utils.book_append_sheet(
+    wb,
+    sheet,
+    mode === "intersect" ? "Aligned (intersect)" : "Aligned (union)"
+  );
 
   const names = ids
     .map((id) => datasets.find((d) => d.id === id)?.name ?? "set")
     .map((n) => n.replace(/\.[^.]+$/, ""))
     .join("__");
-  XLSX.writeFile(wb, `intersection_by_column__${names}.xlsx`, { cellStyles: true });
+  const tag = mode === "intersect" ? "intersect" : "union";
+  XLSX.writeFile(wb, `aligned_${tag}__${names}.xlsx`, { cellStyles: true });
+  void safe;
 };
 
 /** Build & download a single dataset as .xlsx (used for merged datasets). */
