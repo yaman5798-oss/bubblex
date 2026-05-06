@@ -23,51 +23,55 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
-/** Build & download a column-scoped, anchor-aligned export.
- *  - `anchorByDs`: ONE anchor column per dataset (e.g. Customer Name).
- *  - `extraByDs`:  zero or more additional columns to bring along per dataset.
- *  Output is a single sheet where each row represents one anchor value;
- *  each dataset contributes its anchor cell + extra columns side-by-side.
+/** Build aligned rows by anchor value. Used by both the live preview and the
+ *  XLSX download so the user sees exactly what they'll get.
+ *  - `anchorsByDs`: ONE OR MORE anchor columns per dataset (values pooled).
+ *  - `extraByDs`:   zero or more additional columns to bring along per dataset.
  *  - mode "union":     row exists if ANY dataset has the anchor value.
- *  - mode "intersect": row exists only if ALL datasets have the anchor value.
+ *  - mode "intersect": row exists only if ALL chosen datasets have the value.
  */
-const downloadColumnScopedIntersection = (
+const buildAlignedRows = (
   group: IntersectionGroup,
   datasets: Dataset[],
-  anchorByDs: Record<string, string>,
+  anchorsByDs: Record<string, string[]>,
   extraByDs: Record<string, string[]>,
   mode: "union" | "intersect"
-) => {
-  const ids = group.datasetIds.filter((id) => !!anchorByDs[id]);
-  if (ids.length < 2) return;
+): {
+  headers: string[];
+  rows: (string | number | null)[][];
+  ids: string[];
+  colSpans: { id: string; cols: string[] }[];
+} => {
+  const ids = group.datasetIds.filter((id) => (anchorsByDs[id]?.length ?? 0) > 0);
+  if (ids.length < 2) return { headers: [], rows: [], ids: [], colSpans: [] };
 
-  // Build per-dataset map: normalized anchor value -> array of full rows
-  // (a customer can appear multiple times). Also keep a display value (first hit).
   type DsIndex = {
     ds: Dataset;
-    anchor: string;
+    anchors: string[];
     extras: string[];
     rowsByVal: Map<string, Record<string, unknown>[]>;
     displayByVal: Map<string, string>;
   };
   const indexes: DsIndex[] = ids.map((id) => {
     const ds = datasets.find((d) => d.id === id)!;
-    const anchor = anchorByDs[id];
-    const extras = (extraByDs[id] ?? []).filter((c) => c !== anchor);
+    const anchors = anchorsByDs[id];
+    const extras = (extraByDs[id] ?? []).filter((c) => !anchors.includes(c));
     const rowsByVal = new Map<string, Record<string, unknown>[]>();
     const displayByVal = new Map<string, string>();
     for (const r of ds.rows) {
-      const n = normalizeValue(r[anchor]);
-      if (n === "") continue;
-      let arr = rowsByVal.get(n);
-      if (!arr) { arr = []; rowsByVal.set(n, arr); }
-      arr.push(r);
-      if (!displayByVal.has(n)) displayByVal.set(n, String(r[anchor] ?? ""));
+      for (const a of anchors) {
+        const n = normalizeValue(r[a]);
+        if (n === "") continue;
+        let arr = rowsByVal.get(n);
+        if (!arr) { arr = []; rowsByVal.set(n, arr); }
+        arr.push(r);
+        if (!displayByVal.has(n)) displayByVal.set(n, String(r[a] ?? ""));
+        break; // a row matches via first anchor that has a value
+      }
     }
-    return { ds, anchor, extras, rowsByVal, displayByVal };
+    return { ds, anchors, extras, rowsByVal, displayByVal };
   });
 
-  // Determine the set of anchor values to include.
   let anchorVals: string[];
   if (mode === "intersect") {
     const sorted = indexes.slice().sort((a, b) => a.rowsByVal.size - b.rowsByVal.size);
@@ -81,18 +85,16 @@ const downloadColumnScopedIntersection = (
   }
   anchorVals.sort();
 
-  // Build aligned rows. If a dataset has multiple rows for the same anchor,
-  // emit multiple aligned rows (the OTHER datasets repeat their first match).
   const headers: string[] = ["anchor_value"];
   const colSpans: { id: string; cols: string[] }[] = [];
   for (const idx of indexes) {
     const safeName = idx.ds.name.replace(/\.[^.]+$/, "");
-    const cols = [idx.anchor, ...idx.extras];
+    const cols = [...idx.anchors, ...idx.extras];
     colSpans.push({ id: idx.ds.id, cols });
     for (const c of cols) headers.push(`${safeName} · ${c}`);
   }
 
-  const aoa: (string | number | null)[][] = [headers];
+  const rows: (string | number | null)[][] = [];
   for (const v of anchorVals) {
     const perDsRows = indexes.map((idx) => idx.rowsByVal.get(v) ?? [null]);
     const maxLen = perDsRows.reduce((m, r) => Math.max(m, r.length), 1);
@@ -113,29 +115,37 @@ const downloadColumnScopedIntersection = (
           }
         }
       });
-      aoa.push(row);
+      rows.push(row);
     }
   }
+  return { headers, rows, ids, colSpans };
+};
 
+const downloadColumnScopedIntersection = (
+  group: IntersectionGroup,
+  datasets: Dataset[],
+  anchorsByDs: Record<string, string[]>,
+  extraByDs: Record<string, string[]>,
+  mode: "union" | "intersect"
+) => {
+  const { headers, rows, ids } = buildAlignedRows(group, datasets, anchorsByDs, extraByDs, mode);
+  if (ids.length < 2 || rows.length === 0) return;
   const wb = XLSX.utils.book_new();
-  const safe = (n: string, max = 28) =>
-    n.replace(/\.[^.]+$/, "").replace(/[\\/?*[\]:]/g, "_").slice(0, max) || "sheet";
-  const sheet = XLSX.utils.aoa_to_sheet(aoa);
+  const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   sheet["!cols"] = headers.map(() => ({ wch: 20 }));
   XLSX.utils.book_append_sheet(
     wb,
     sheet,
     mode === "intersect" ? "Aligned (intersect)" : "Aligned (union)"
   );
-
   const names = ids
     .map((id) => datasets.find((d) => d.id === id)?.name ?? "set")
     .map((n) => n.replace(/\.[^.]+$/, ""))
     .join("__");
   const tag = mode === "intersect" ? "intersect" : "union";
   XLSX.writeFile(wb, `aligned_${tag}__${names}.xlsx`, { cellStyles: true });
-  void safe;
 };
+
 
 /** Build & download a single dataset as .xlsx (used for merged datasets). */
 const downloadDatasetXlsx = (ds: Dataset) => {
@@ -1219,9 +1229,11 @@ const GroupPanel = ({
   // Per-dataset selected columns for export. Empty/undefined ⇒ export ALL columns.
   // Toggled by double-clicking a header in the Matched rows view.
   const [selectionByDs, setSelectionByDs] = useState<Record<string, Set<string>>>({});
-  // Column-scoped: ONE anchor column per dataset + zero-or-more extra columns.
-  const [anchorByDs, setAnchorByDs] = useState<Record<string, string>>({});
+  // Column-scoped: ONE OR MORE anchor columns per dataset (values pooled),
+  // plus zero-or-more extra columns brought along on the same row.
+  const [anchorByDs, setAnchorByDs] = useState<Record<string, string[]>>({});
   const [extraByDs, setExtraByDs] = useState<Record<string, string[]>>({});
+  const [previewMode, setPreviewMode] = useState<"intersect" | "union">("intersect");
   // Reset selections when switching to a different intersection.
   useEffect(() => {
     setSelectionByDs({});
@@ -1230,7 +1242,7 @@ const GroupPanel = ({
   }, [group.id]);
   const scopedReady =
     group.datasetIds.length >= 2 &&
-    group.datasetIds.every((id) => !!anchorByDs[id]);
+    group.datasetIds.every((id) => (anchorByDs[id]?.length ?? 0) > 0);
 
   const toggleColumn = (dsId: string, col: string) => {
     setSelectionByDs((s) => {
@@ -1325,10 +1337,15 @@ const GroupPanel = ({
           </p>
         </div>
         {groupDatasets.map((ds) => {
-          const anchor = anchorByDs[ds.id];
+          const anchors = anchorByDs[ds.id] ?? [];
           const extras = extraByDs[ds.id] ?? [];
-          const setAnchor = (h: string) =>
-            setAnchorByDs((s) => ({ ...s, [ds.id]: h }));
+          const toggleAnchor = (h: string) =>
+            setAnchorByDs((s) => {
+              const cur = new Set(s[ds.id] ?? []);
+              if (cur.has(h)) cur.delete(h);
+              else cur.add(h);
+              return { ...s, [ds.id]: Array.from(cur) };
+            });
           const toggleExtra = (h: string) =>
             setExtraByDs((s) => {
               const cur = new Set(s[ds.id] ?? []);
@@ -1344,34 +1361,49 @@ const GroupPanel = ({
                   style={{ background: `hsl(var(${ds.colorVar}))` }}
                 />
                 <span className="text-[11px] truncate flex-1" title={ds.name}>{ds.name}</span>
-                <select
-                  value={anchor ?? ""}
-                  onChange={(e) => setAnchor(e.target.value)}
-                  className="text-[10px] bg-background/60 border border-[hsl(var(--panel-border))] rounded px-1 py-0.5 max-w-[140px]"
-                >
-                  <option value="">— anchor —</option>
-                  {ds.headers.map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
+                <span className="text-[10px] text-muted-foreground">
+                  {anchors.length}⚓ · {extras.length}+
+                </span>
               </div>
-              <div className="flex flex-wrap gap-1 pl-4 max-h-24 overflow-y-auto">
-                {ds.headers.filter((h) => h !== anchor).map((h) => {
-                  const on = extras.includes(h);
-                  return (
-                    <button
-                      key={h}
-                      onClick={() => toggleExtra(h)}
-                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                        on
-                          ? "bg-primary/20 border-primary text-foreground"
-                          : "bg-background/60 border-[hsl(var(--panel-border))] text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {h}
-                    </button>
-                  );
-                })}
+              <div className="pl-4 space-y-1">
+                <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Anchors (click to toggle)</div>
+                <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                  {ds.headers.map((h) => {
+                    const on = anchors.includes(h);
+                    return (
+                      <button
+                        key={h}
+                        onClick={() => toggleAnchor(h)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                          on
+                            ? "bg-amber-500/30 border-amber-400 text-foreground"
+                            : "bg-background/60 border-[hsl(var(--panel-border))] text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        ⚓ {h}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Extras</div>
+                <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                  {ds.headers.filter((h) => !anchors.includes(h)).map((h) => {
+                    const on = extras.includes(h);
+                    return (
+                      <button
+                        key={h}
+                        onClick={() => toggleExtra(h)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                          on
+                            ? "bg-primary/20 border-primary text-foreground"
+                            : "bg-background/60 border-[hsl(var(--panel-border))] text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {h}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
@@ -1402,6 +1434,17 @@ const GroupPanel = ({
             Union (all)
           </Button>
         </div>
+
+        {scopedReady && (
+          <AlignedPreview
+            group={group}
+            datasets={datasets}
+            anchorByDs={anchorByDs}
+            extraByDs={extraByDs}
+            mode={previewMode}
+            setMode={setPreviewMode}
+          />
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-[hsl(var(--panel-border))]">
@@ -1492,6 +1535,96 @@ const GroupPanel = ({
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+const AlignedPreview = ({
+  group,
+  datasets,
+  anchorByDs,
+  extraByDs,
+  mode,
+  setMode,
+}: {
+  group: IntersectionGroup;
+  datasets: Dataset[];
+  anchorByDs: Record<string, string[]>;
+  extraByDs: Record<string, string[]>;
+  mode: "intersect" | "union";
+  setMode: (m: "intersect" | "union") => void;
+}) => {
+  const { headers, rows } = useMemo(
+    () => buildAlignedRows(group, datasets, anchorByDs, extraByDs, mode),
+    [group, datasets, anchorByDs, extraByDs, mode]
+  );
+  const PREVIEW_LIMIT = 50;
+  const shown = rows.slice(0, PREVIEW_LIMIT);
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold">Live preview</p>
+        <div className="inline-flex rounded border border-[hsl(var(--panel-border))] overflow-hidden">
+          {(["intersect", "union"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`text-[10px] px-2 py-0.5 ${
+                mode === m
+                  ? "bg-primary/30 text-foreground"
+                  : "bg-background/60 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        {rows.length.toLocaleString()} row{rows.length === 1 ? "" : "s"}
+        {rows.length > PREVIEW_LIMIT ? ` · showing first ${PREVIEW_LIMIT}` : ""}
+      </p>
+      <div className="border border-[hsl(var(--panel-border))] rounded overflow-auto max-h-72 bg-background/50">
+        <table className="text-[10px] w-full border-collapse">
+          <thead className="sticky top-0 bg-background/95 backdrop-blur">
+            <tr>
+              {headers.map((h, i) => (
+                <th
+                  key={i}
+                  className="text-left font-semibold px-1.5 py-1 border-b border-[hsl(var(--panel-border))] whitespace-nowrap"
+                  title={h}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {shown.length === 0 ? (
+              <tr>
+                <td className="px-2 py-3 text-muted-foreground" colSpan={Math.max(1, headers.length)}>
+                  No matching rows.
+                </td>
+              </tr>
+            ) : (
+              shown.map((r, ri) => (
+                <tr key={ri} className="odd:bg-white/[0.02]">
+                  {r.map((c, ci) => (
+                    <td
+                      key={ci}
+                      className="px-1.5 py-0.5 border-b border-[hsl(var(--panel-border))]/40 align-top max-w-[180px] truncate"
+                      title={c == null ? "" : String(c)}
+                    >
+                      {c == null ? <span className="text-muted-foreground">—</span> : String(c)}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
