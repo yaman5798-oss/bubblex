@@ -95,28 +95,31 @@ const buildAlignedRows = (
   }
 
   const rows: (string | number | null)[][] = [];
-  for (const v of anchorVals) {
-    const perDsRows = indexes.map((idx) => idx.rowsByVal.get(v) ?? [null]);
-    const maxLen = perDsRows.reduce((m, r) => Math.max(m, r.length), 1);
-    for (let i = 0; i < maxLen; i++) {
-      const row: (string | number | null)[] = [
-        indexes.find((idx) => idx.displayByVal.has(v))?.displayByVal.get(v) ?? v,
-      ];
-      indexes.forEach((idx, di) => {
-        const rs = perDsRows[di];
-        const r = rs[i] ?? rs[0] ?? null;
-        const cols = colSpans[di].cols;
-        if (!r) {
-          for (let k = 0; k < cols.length; k++) row.push(null);
-        } else {
-          for (const c of cols) {
-            const cell = (r as Record<string, unknown>)[c];
-            row.push(cell == null ? null : (typeof cell === "number" ? cell : String(cell)));
-          }
-        }
-      });
-      rows.push(row);
+  // Deduplicate: one row per anchor value. For each column, collapse multiple
+  // matching source rows into a single cell. Numeric columns sum; text columns
+  // join unique values with " | ".
+  const collapse = (vals: unknown[]): string | number | null => {
+    const cleaned = vals.filter((x) => x !== null && x !== undefined && x !== "");
+    if (cleaned.length === 0) return null;
+    if (cleaned.every((x) => typeof x === "number")) {
+      return (cleaned as number[]).reduce((a, b) => a + b, 0);
     }
+    const uniq = Array.from(new Set(cleaned.map((x) => String(x))));
+    return uniq.length === 1 ? uniq[0] : uniq.join(" | ");
+  };
+  for (const v of anchorVals) {
+    const row: (string | number | null)[] = [
+      indexes.find((idx) => idx.displayByVal.has(v))?.displayByVal.get(v) ?? v,
+    ];
+    indexes.forEach((idx, di) => {
+      const rs = idx.rowsByVal.get(v) ?? [];
+      const cols = colSpans[di].cols;
+      for (const c of cols) {
+        if (rs.length === 0) { row.push(null); continue; }
+        row.push(collapse(rs.map((r) => (r as Record<string, unknown>)[c])));
+      }
+    });
+    rows.push(row);
   }
   return { headers, rows, ids, colSpans };
 };
