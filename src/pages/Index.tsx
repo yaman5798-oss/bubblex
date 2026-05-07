@@ -22,6 +22,7 @@ import { Upload, Download, Trash2, FileSpreadsheet, X, Search, Pencil, Check, Lo
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import * as XLSXStyle from "xlsx-js-style";
 
 /** Build aligned rows by anchor value. Used by both the live preview and the
  *  XLSX download so the user sees exactly what they'll get.
