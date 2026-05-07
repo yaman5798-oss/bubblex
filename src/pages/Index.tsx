@@ -1460,19 +1460,7 @@ const GroupPanel = ({
             </div>
           );
         })}
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!scopedReady}
-            onClick={() =>
-              downloadColumnScopedIntersection(group, datasets, anchorByDs, extraByDs, "intersect")
-            }
-            className="gap-1"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Intersect
-          </Button>
+        <div className="grid grid-cols-1 gap-2">
           <Button
             size="sm"
             variant="secondary"
