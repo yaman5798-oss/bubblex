@@ -1337,6 +1337,36 @@ const GroupPanel = ({
           ? `Download .xlsx (${totalSelected} selected col${totalSelected === 1 ? "" : "s"})`
           : "Download intersection .xlsx"}
       </Button>
+
+      <div className="rounded border border-border bg-muted/20">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <p className="text-xs font-semibold">Shared values preview</p>
+          <span className="text-[10px] text-muted-foreground">
+            {group.sharedValues.length} total
+          </span>
+        </div>
+        {group.sharedValues.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-muted-foreground">No shared values.</p>
+        ) : (
+          <div className="max-h-48 overflow-auto px-3 py-2 flex flex-wrap gap-1">
+            {group.sharedValues.slice(0, 200).map((v, i) => (
+              <span
+                key={i}
+                className="inline-block px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono"
+                title={v}
+              >
+                {v.length > 40 ? v.slice(0, 38) + "…" : v}
+              </span>
+            ))}
+            {group.sharedValues.length > 200 && (
+              <span className="text-[10px] text-muted-foreground self-center">
+                +{group.sharedValues.length - 200} more
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
       {totalSelected > 0 && (
         <button
           onClick={() => setSelectionByDs({})}
