@@ -1339,6 +1339,55 @@ const GroupPanel = ({
             (variance, YTD…) to bring them along on the same line.
           </p>
         </div>
+        {(() => {
+          // Compute headers common to ALL datasets in the group.
+          const common = groupDatasets.length > 1
+            ? groupDatasets[0].headers.filter((h) =>
+                groupDatasets.every((d) => d.headers.includes(h))
+              )
+            : [];
+          if (common.length === 0) return null;
+          const allOn = (h: string) =>
+            groupDatasets.every((d) => (anchorByDs[d.id] ?? []).includes(h));
+          const toggleCommon = (h: string) => {
+            const turnOff = allOn(h);
+            setAnchorByDs((s) => {
+              const next = { ...s };
+              for (const d of groupDatasets) {
+                const cur = new Set(next[d.id] ?? []);
+                if (turnOff) cur.delete(h);
+                else cur.add(h);
+                next[d.id] = Array.from(cur);
+              }
+              return next;
+            });
+          };
+          return (
+            <div className="rounded border border-amber-400/30 bg-amber-500/5 p-2 space-y-1">
+              <div className="text-[9px] uppercase tracking-wider text-amber-300/80">
+                Common anchors (apply to all datasets)
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {common.map((h) => {
+                  const on = allOn(h);
+                  return (
+                    <button
+                      key={h}
+                      onClick={() => toggleCommon(h)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                        on
+                          ? "bg-amber-500/40 border-amber-400 text-foreground"
+                          : "bg-background/60 border-amber-400/40 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      ⚓ {h}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
         {groupDatasets.map((ds) => {
           const anchors = anchorByDs[ds.id] ?? [];
           const extras = extraByDs[ds.id] ?? [];
