@@ -137,6 +137,25 @@ const downloadColumnScopedIntersection = (
   const wb = XLSX.utils.book_new();
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   sheet["!cols"] = headers.map(() => ({ wch: 20 }));
+  // Fill empty/null cells with solid black background so gaps are visually obvious.
+  const blackFill = {
+    fill: { patternType: "solid", fgColor: { rgb: "000000" }, bgColor: { rgb: "000000" } },
+  };
+  for (let r = 1; r <= rows.length; r++) {
+    for (let c = 0; c < headers.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = sheet[addr];
+      const isEmpty = !cell || cell.v === null || cell.v === undefined || cell.v === "";
+      if (isEmpty) {
+        sheet[addr] = { t: "s", v: "", s: blackFill };
+      }
+    }
+  }
+  // Ensure sheet range covers all cells we wrote.
+  sheet["!ref"] = XLSX.utils.encode_range({
+    s: { r: 0, c: 0 },
+    e: { r: rows.length, c: headers.length - 1 },
+  });
   XLSX.utils.book_append_sheet(
     wb,
     sheet,
@@ -147,7 +166,7 @@ const downloadColumnScopedIntersection = (
     .map((n) => n.replace(/\.[^.]+$/, ""))
     .join("__");
   const tag = mode === "intersect" ? "intersect" : "union";
-  XLSX.writeFile(wb, `aligned_${tag}__${names}.xlsx`, { cellStyles: true });
+  XLSXStyle.writeFile(wb, `aligned_${tag}__${names}.xlsx`);
 };
 
 
