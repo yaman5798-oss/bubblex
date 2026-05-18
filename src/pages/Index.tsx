@@ -137,7 +137,7 @@ const downloadColumnScopedIntersection = (
   extraByDs: Record<string, string[]>,
   mode: "union" | "intersect"
 ) => {
-  const { headers, rows, ids } = buildAlignedRows(group, datasets, anchorsByDs, extraByDs, mode);
+  const { headers, rows, ids, colSpans, presence } = buildAlignedRows(group, datasets, anchorsByDs, extraByDs, mode);
   if (ids.length < 2 || rows.length === 0) return;
   const wb = XLSX.utils.book_new();
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
@@ -146,13 +146,45 @@ const downloadColumnScopedIntersection = (
   const emptyFill = {
     fill: { patternType: "solid", fgColor: { rgb: "D3D3D3" }, bgColor: { rgb: "D3D3D3" } },
   };
+  // Highlight anchor cells whose value is shared across 2+ datasets (union mode export).
+  const matchFill = {
+    fill: { patternType: "solid", fgColor: { rgb: "FFE066" }, bgColor: { rgb: "FFE066" } },
+    font: { bold: true },
+  };
+  // Precompute the column index where each dataset's block starts.
+  const dsStartCol: number[] = [];
+  let acc = 1; // col 0 = anchor_value
+  for (const cs of colSpans) {
+    dsStartCol.push(acc);
+    acc += cs.cols.length;
+  }
   for (let r = 1; r <= rows.length; r++) {
+    const pres = presence[r - 1] ?? [];
+    const matchCount = pres.filter(Boolean).length;
+    const isShared = matchCount >= 2;
     for (let c = 0; c < headers.length; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[addr];
       const isEmpty = !cell || cell.v === null || cell.v === undefined || cell.v === "";
       if (isEmpty) {
         sheet[addr] = { t: "s", v: "", s: emptyFill };
+        continue;
+      }
+      if (!isShared) continue;
+      // Anchor cell? col 0, or within a dataset's anchor columns.
+      let isAnchorCell = c === 0;
+      if (!isAnchorCell) {
+        for (let di = 0; di < colSpans.length; di++) {
+          const start = dsStartCol[di];
+          const end = start + colSpans[di].anchorCount;
+          if (c >= start && c < end) {
+            isAnchorCell = pres[di] === true;
+            break;
+          }
+        }
+      }
+      if (isAnchorCell) {
+        sheet[addr] = { ...cell, s: { ...(cell.s ?? {}), ...matchFill } };
       }
     }
   }
