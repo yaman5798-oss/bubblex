@@ -41,10 +41,11 @@ const buildAlignedRows = (
   headers: string[];
   rows: (string | number | null)[][];
   ids: string[];
-  colSpans: { id: string; cols: string[] }[];
+  colSpans: { id: string; cols: string[]; anchorCount: number }[];
+  presence: boolean[][];
 } => {
   const ids = group.datasetIds.filter((id) => (anchorsByDs[id]?.length ?? 0) > 0);
-  if (ids.length < 2) return { headers: [], rows: [], ids: [], colSpans: [] };
+  if (ids.length < 2) return { headers: [], rows: [], ids: [], colSpans: [], presence: [] };
 
   type DsIndex = {
     ds: Dataset;
@@ -87,15 +88,16 @@ const buildAlignedRows = (
   anchorVals.sort();
 
   const headers: string[] = ["anchor_value"];
-  const colSpans: { id: string; cols: string[] }[] = [];
+  const colSpans: { id: string; cols: string[]; anchorCount: number }[] = [];
   for (const idx of indexes) {
     const safeName = idx.ds.name.replace(/\.[^.]+$/, "");
     const cols = [...idx.anchors, ...idx.extras];
-    colSpans.push({ id: idx.ds.id, cols });
+    colSpans.push({ id: idx.ds.id, cols, anchorCount: idx.anchors.length });
     for (const c of cols) headers.push(`${safeName} · ${c}`);
   }
 
   const rows: (string | number | null)[][] = [];
+  const presence: boolean[][] = [];
   // Deduplicate: one row per anchor value. For each column, collapse multiple
   // matching source rows into a single cell. Numeric columns sum; text columns
   // join unique values with " | ".
@@ -112,8 +114,10 @@ const buildAlignedRows = (
     const row: (string | number | null)[] = [
       indexes.find((idx) => idx.displayByVal.has(v))?.displayByVal.get(v) ?? v,
     ];
+    const pres: boolean[] = [];
     indexes.forEach((idx, di) => {
       const rs = idx.rowsByVal.get(v) ?? [];
+      pres.push(rs.length > 0);
       const cols = colSpans[di].cols;
       for (const c of cols) {
         if (rs.length === 0) { row.push(null); continue; }
@@ -121,8 +125,9 @@ const buildAlignedRows = (
       }
     });
     rows.push(row);
+    presence.push(pres);
   }
-  return { headers, rows, ids, colSpans };
+  return { headers, rows, ids, colSpans, presence };
 };
 
 const downloadColumnScopedIntersection = (
@@ -132,7 +137,7 @@ const downloadColumnScopedIntersection = (
   extraByDs: Record<string, string[]>,
   mode: "union" | "intersect"
 ) => {
-  const { headers, rows, ids } = buildAlignedRows(group, datasets, anchorsByDs, extraByDs, mode);
+  const { headers, rows, ids, colSpans, presence } = buildAlignedRows(group, datasets, anchorsByDs, extraByDs, mode);
   if (ids.length < 2 || rows.length === 0) return;
   const wb = XLSX.utils.book_new();
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
@@ -141,13 +146,45 @@ const downloadColumnScopedIntersection = (
   const emptyFill = {
     fill: { patternType: "solid", fgColor: { rgb: "D3D3D3" }, bgColor: { rgb: "D3D3D3" } },
   };
+  // Highlight anchor cells whose value is shared across 2+ datasets (union mode export).
+  const matchFill = {
+    fill: { patternType: "solid", fgColor: { rgb: "FFE066" }, bgColor: { rgb: "FFE066" } },
+    font: { bold: true },
+  };
+  // Precompute the column index where each dataset's block starts.
+  const dsStartCol: number[] = [];
+  let acc = 1; // col 0 = anchor_value
+  for (const cs of colSpans) {
+    dsStartCol.push(acc);
+    acc += cs.cols.length;
+  }
   for (let r = 1; r <= rows.length; r++) {
+    const pres = presence[r - 1] ?? [];
+    const matchCount = pres.filter(Boolean).length;
+    const isShared = matchCount >= 2;
     for (let c = 0; c < headers.length; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[addr];
       const isEmpty = !cell || cell.v === null || cell.v === undefined || cell.v === "";
       if (isEmpty) {
         sheet[addr] = { t: "s", v: "", s: emptyFill };
+        continue;
+      }
+      if (!isShared) continue;
+      // Anchor cell? col 0, or within a dataset's anchor columns.
+      let isAnchorCell = c === 0;
+      if (!isAnchorCell) {
+        for (let di = 0; di < colSpans.length; di++) {
+          const start = dsStartCol[di];
+          const end = start + colSpans[di].anchorCount;
+          if (c >= start && c < end) {
+            isAnchorCell = pres[di] === true;
+            break;
+          }
+        }
+      }
+      if (isAnchorCell) {
+        sheet[addr] = { ...cell, s: { ...(cell.s ?? {}), ...matchFill } };
       }
     }
   }
