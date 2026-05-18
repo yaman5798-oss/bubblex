@@ -147,7 +147,7 @@ const downloadColumnScopedIntersection = (
       const cell = sheet[addr];
       const isEmpty = !cell || cell.v === null || cell.v === undefined || cell.v === "";
       if (isEmpty) {
-        sheet[addr] = { t: "s", v: "", s: blackFill };
+        sheet[addr] = { t: "s", v: "", s: emptyFill };
       }
     }
   }
