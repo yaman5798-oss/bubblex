@@ -88,15 +88,16 @@ const buildAlignedRows = (
   anchorVals.sort();
 
   const headers: string[] = ["anchor_value"];
-  const colSpans: { id: string; cols: string[] }[] = [];
+  const colSpans: { id: string; cols: string[]; anchorCount: number }[] = [];
   for (const idx of indexes) {
     const safeName = idx.ds.name.replace(/\.[^.]+$/, "");
     const cols = [...idx.anchors, ...idx.extras];
-    colSpans.push({ id: idx.ds.id, cols });
+    colSpans.push({ id: idx.ds.id, cols, anchorCount: idx.anchors.length });
     for (const c of cols) headers.push(`${safeName} · ${c}`);
   }
 
   const rows: (string | number | null)[][] = [];
+  const presence: boolean[][] = [];
   // Deduplicate: one row per anchor value. For each column, collapse multiple
   // matching source rows into a single cell. Numeric columns sum; text columns
   // join unique values with " | ".
@@ -113,8 +114,10 @@ const buildAlignedRows = (
     const row: (string | number | null)[] = [
       indexes.find((idx) => idx.displayByVal.has(v))?.displayByVal.get(v) ?? v,
     ];
+    const pres: boolean[] = [];
     indexes.forEach((idx, di) => {
       const rs = idx.rowsByVal.get(v) ?? [];
+      pres.push(rs.length > 0);
       const cols = colSpans[di].cols;
       for (const c of cols) {
         if (rs.length === 0) { row.push(null); continue; }
@@ -122,8 +125,9 @@ const buildAlignedRows = (
       }
     });
     rows.push(row);
+    presence.push(pres);
   }
-  return { headers, rows, ids, colSpans };
+  return { headers, rows, ids, colSpans, presence };
 };
 
 const downloadColumnScopedIntersection = (
