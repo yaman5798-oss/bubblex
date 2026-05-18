@@ -137,9 +137,9 @@ const downloadColumnScopedIntersection = (
   const wb = XLSX.utils.book_new();
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   sheet["!cols"] = headers.map(() => ({ wch: 20 }));
-  // Fill empty/null cells with solid black background so gaps are visually obvious.
-  const blackFill = {
-    fill: { patternType: "solid", fgColor: { rgb: "000000" }, bgColor: { rgb: "000000" } },
+  // Fill empty/null cells with solid light grey background so gaps are visually obvious.
+  const emptyFill = {
+    fill: { patternType: "solid", fgColor: { rgb: "D3D3D3" }, bgColor: { rgb: "D3D3D3" } },
   };
   for (let r = 1; r <= rows.length; r++) {
     for (let c = 0; c < headers.length; c++) {
