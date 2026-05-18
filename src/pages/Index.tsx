@@ -41,10 +41,11 @@ const buildAlignedRows = (
   headers: string[];
   rows: (string | number | null)[][];
   ids: string[];
-  colSpans: { id: string; cols: string[] }[];
+  colSpans: { id: string; cols: string[]; anchorCount: number }[];
+  presence: boolean[][];
 } => {
   const ids = group.datasetIds.filter((id) => (anchorsByDs[id]?.length ?? 0) > 0);
-  if (ids.length < 2) return { headers: [], rows: [], ids: [], colSpans: [] };
+  if (ids.length < 2) return { headers: [], rows: [], ids: [], colSpans: [], presence: [] };
 
   type DsIndex = {
     ds: Dataset;
